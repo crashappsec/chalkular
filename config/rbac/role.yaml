@@ -1,0 +1,45 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - chalkular.ocular.crashoverride.run
+  resources:
+  - artifactmediatypemappings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - chalkular.ocular.crashoverride.run
+  resources:
+  - artifactmediatypemappings/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - chalkular.ocular.crashoverride.run
+  resources:
+  - artifactmediatypemappings/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ocular.crashoverride.run
+  resources:
+  - pipelines
+  - profiles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
