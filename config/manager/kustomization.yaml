@@ -5,5 +5,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: chalkular-controller
+  newName: ghcr.io/crashappsec/chalkular-controller
   newTag: latest
+configMapGenerator:
+  - name: controller-manager-config
+    literals:
+      - CHALKULAR_DOWNLOADER_PULLPOLICY=IfNotPresent
+      - CHALKULAR_DOWNLOADER_IMG=ghcr.io/crashappsec/chalkular-downloader:latest
+    options:
+      disableNameSuffixHash: true
