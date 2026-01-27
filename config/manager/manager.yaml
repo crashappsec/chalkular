@@ -88,6 +88,10 @@ spec:
               cpu: 10m
               memory: 64Mi
           volumeMounts: [ ]
+          env: []
+          envFrom:
+            - configMapRef:
+                name: controller-manager-config
       volumes: [ ]
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

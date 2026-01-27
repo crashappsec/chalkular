@@ -33,6 +33,7 @@ rules:
 - apiGroups:
   - ocular.crashoverride.run
   resources:
+  - downloaders
   - pipelines
   - profiles
   verbs:

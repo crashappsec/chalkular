@@ -10,7 +10,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-chalkular-ocular-crashoverride-run-chalk-ocular-crashoverride-run-v1beta1-artifactmediatypemapping
+      path: /mutate-chalkular-ocular-crashoverride-run-v1beta1-artifactmediatypemapping
   failurePolicy: Fail
   name: martifactmediatypemapping-v1beta1.kb.io
   rules:
@@ -36,7 +36,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-chalkular-ocular-crashoverride-run-chalk-ocular-crashoverride-run-v1beta1-artifactmediatypemapping
+      path: /validate-chalkular-ocular-crashoverride-run-v1beta1-artifactmediatypemapping
   failurePolicy: Fail
   name: vartifactmediatypemapping-v1beta1.kb.io
   rules:

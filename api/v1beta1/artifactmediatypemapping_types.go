@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Crash Override, Inc.
+// Copyright (C) 2025-2026 Crash Override, Inc.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -14,16 +14,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// ArtifactMediaTypeMappingSpec defines the desired state of ArtifactMediaTypeMapping
+// ArtifactMediaTypeMappingSpec defines the desired state of ArtifactMediaTypeMapping.
+// The spec includes the media types to watch for, the [github.com/crashappsec/ocular/api/v1beta1.Profile]
+// that should be used, and additional options for the created [github.com/crashappsec/ocular/api/v1beta1.Pipeline]
 type ArtifactMediaTypeMappingSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
-
 	// MediaTypes is the media type of the artifact.
 	// +kubebuilder:validation:items:Pattern=`^[\w.-]+/[\w\.\-\+]+$`
 	// +required
@@ -33,6 +27,11 @@ type ArtifactMediaTypeMappingSpec struct {
 	// See ArtifactMediaTypeMappingProfile resource for more information.
 	// +required
 	Profile ArtifactMediaTypeMappingProfile `json:"profile"`
+
+	// Downloader is the downloader to use for pipelines created for the
+	// [MediaTypes]. If not set, this defaults to cluster chalkular downloader
+	// +optional
+	Downloader ArtifactMediaTypeMappingDownloader `json:"downloader"`
 
 	// ScanServiceAccountName is the name of the service account that will be used to run the scan job.
 	// If not set, the default service account of the namespace will be used.
@@ -71,24 +70,55 @@ type ArtifactMediaTypeMappingProfile struct {
 
 	// ValueFrom is a reference to a Profile resource.
 	// +optional
-	ValueFrom v1.LocalObjectReference `json:"valueFrom,omitempty,omitzero" yaml:"valueFrom,omitempty,omitzero"`
+	ValueFrom v1.ObjectReference `json:"valueFrom,omitempty,omitzero" yaml:"valueFrom,omitempty,omitzero"`
 }
 
+// ArtifactMediaTypeMappingDownloader defines a reference to a Downloader resource
+// that can be specified either directly or via a reference to a Downloader resource.
+// If Value is given, a profile will be created and owned by the ArtifactMediaTypeMapping resource.
+// If ValueFrom is given, the Downloader resource will be referenced.
+// Exactly one of Value or ValueFrom must be specified.
+// +kubebuilder:validation:XValidation:message="exactly one of 'value' or 'valueFrom' must be set",rule="(has(self.value) && !has(self.valueFrom)) || (!has(self.value) && has(self.valueFrom))"
+type ArtifactMediaTypeMappingDownloader struct {
+	// Value is the Downloader resource to use.
+	// +optional
+	Value *v1beta1.DownloaderSpec `json:"value,omitempty,omitzero" yaml:"value,omitempty,omitzero"`
+
+	// ValueFrom is a reference to a Downloader resource.
+	// +optional
+	ValueFrom v1.ObjectReference `json:"valueFrom,omitempty,omitzero" yaml:"valueFrom,omitempty,omitzero"`
+}
+
+// ArtifactMediaTypeMappingProfileStatus represents the status of the managed or referenced profile
+// +kubebuilder:validation:XValidation:rule="has(self.available) && self.available ? has(self.ref) : true",message="if the profile is available, the reference must be set"
 type ArtifactMediaTypeMappingProfileStatus struct {
-	// Name is the name of the Profile resource.
-	Name string `json:"name,omitempty"`
+	// Ref is a [v1.ObjectReference] that points to the
+	// Profile to be used. This will be set only if [Available]
+	// is true
+	// +optional
+	Ref *v1.ObjectReference `json:"ref,omitempty"`
+
 	// Available indicates whether the Profile resource is available.
-	Available bool `json:"available,omitempty"`
+	// +optional
+	Available bool `json:"available"`
+}
+
+// ArtifactMediaTypeMappingDownloaderStatus represents the status of the managed or referenced downloader
+// +kubebuilder:validation:XValidation:rule="has(self.available) && self.available ? has(self.ref) : true",message="if the downloader is available, the reference must be set"
+type ArtifactMediaTypeMappingDownloaderStatus struct {
+	// Ref is a [v1.ObjectReference] that points to the
+	// Profile to be used. This will be set only if [Available]
+	// is true
+	// +optional
+	Ref *v1.ObjectReference `json:"ref,omitempty"`
+
+	// Available indicates whether the Downloader resource is available.
+	// +optional
+	Available bool `json:"available"`
 }
 
 // ArtifactMediaTypeMappingStatus defines the observed state of ArtifactMediaTypeMapping.
 type ArtifactMediaTypeMappingStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
 	// conditions represent the current state of the ArtifactMediaTypeMapping resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
 	//
@@ -105,13 +135,21 @@ type ArtifactMediaTypeMappingStatus struct {
 
 	// Profile represents the status of the Profile resource associated with this ArtifactMediaTypeMapping.
 	// +optional
-	Profile *ArtifactMediaTypeMappingProfileStatus `json:"profile,omitempty,omitzero"`
+	Profile *ArtifactMediaTypeMappingProfileStatus `json:"profile,omitempty"`
+
+	// Downloader represents the status of the Downloader resource associated with this ArtifactMediaTypeMapping.
+	// +optional
+	Downloader *ArtifactMediaTypeMappingDownloaderStatus `json:"downloader,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +genclient
 
-// ArtifactMediaTypeMapping is the Schema for the artifactmediatypemappings API
+// ArtifactMediaTypeMapping represents a mapping of OCI media types to the desired
+// [github.com/crashappsec/ocular/api/v1beta1.Pipeline] that should be created
+// when a container image is registered with Chalkular.
+// See [ArtifactMediaTypeMappingSpec] for the full list of available configuration options
 type ArtifactMediaTypeMapping struct {
 	metav1.TypeMeta `json:",inline"`
 

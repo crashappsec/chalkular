@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Crash Override, Inc.
+// Copyright (C) 2025-2026 Crash Override, Inc.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -33,48 +33,31 @@ func SetupArtifactMediaTypeMappingWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
-// +kubebuilder:webhook:path=/mutate-chalkular-ocular-crashoverride-run-chalk-ocular-crashoverride-run-v1beta1-artifactmediatypemapping,mutating=true,failurePolicy=fail,sideEffects=None,groups=chalkular.ocular.crashoverride.run,resources=artifactmediatypemappings,verbs=create;update,versions=v1beta1,name=martifactmediatypemapping-v1beta1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-chalkular-ocular-crashoverride-run-v1beta1-artifactmediatypemapping,mutating=true,failurePolicy=fail,sideEffects=None,groups=chalkular.ocular.crashoverride.run,resources=artifactmediatypemappings,verbs=create;update,versions=v1beta1,name=martifactmediatypemapping-v1beta1.kb.io,admissionReviewVersions=v1
 
 // ArtifactMediaTypeMappingCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind ArtifactMediaTypeMapping when those are created or updated.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as it is used only for temporary operations and does not need to be deeply copied.
-type ArtifactMediaTypeMappingCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
-}
+type ArtifactMediaTypeMappingCustomDefaulter struct{}
 
 var _ webhook.CustomDefaulter = &ArtifactMediaTypeMappingCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind ArtifactMediaTypeMapping.
-func (d *ArtifactMediaTypeMappingCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	artifactmediatypemapping, ok := obj.(*chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping)
+func (d *ArtifactMediaTypeMappingCustomDefaulter) Default(_ context.Context, obja runtime.Object) error {
+	obj, ok := obja.(*chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping)
 
 	if !ok {
 		return fmt.Errorf("expected an ArtifactMediaTypeMapping object but got %T", obj)
 	}
-	artifactmediatypemappinglog.Info("Defaulting for ArtifactMediaTypeMapping", "name", artifactmediatypemapping.GetName())
-
-	// TODO(user): fill in your defaulting logic.
+	artifactmediatypemappinglog.Info("Defaulting for ArtifactMediaTypeMapping", "name", obj.GetName())
 
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
-// +kubebuilder:webhook:path=/validate-chalkular-ocular-crashoverride-run-chalk-ocular-crashoverride-run-v1beta1-artifactmediatypemapping,mutating=false,failurePolicy=fail,sideEffects=None,groups=chalkular.ocular.crashoverride.run,resources=artifactmediatypemappings,verbs=create;update,versions=v1beta1,name=vartifactmediatypemapping-v1beta1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-chalkular-ocular-crashoverride-run-v1beta1-artifactmediatypemapping,mutating=false,failurePolicy=fail,sideEffects=None,groups=chalkular.ocular.crashoverride.run,resources=artifactmediatypemappings,verbs=create;update,versions=v1beta1,name=vartifactmediatypemapping-v1beta1.kb.io,admissionReviewVersions=v1
 
 // ArtifactMediaTypeMappingCustomValidator struct is responsible for validating the ArtifactMediaTypeMapping resource
 // when it is created, updated, or deleted.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as this struct is used only for temporary operations and does not need to be deeply copied.
-type ArtifactMediaTypeMappingCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
-}
+type ArtifactMediaTypeMappingCustomValidator struct{}
 
 var _ webhook.CustomValidator = &ArtifactMediaTypeMappingCustomValidator{}
 

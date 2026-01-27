@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Crash Override, Inc.
+// Copyright (C) 2025-2026 Crash Override, Inc.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -19,6 +19,9 @@ import (
 var (
 	// GroupVersion is group version used to register these objects.
 	GroupVersion = schema.GroupVersion{Group: "chalkular.ocular.crashoverride.run", Version: "v1beta1"}
+	// SchemeGroupVersion is group version used to register these objects.
+	// It is the same as GroupVersion and provided for legacy compatibility.
+	SchemeGroupVersion = GroupVersion
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}

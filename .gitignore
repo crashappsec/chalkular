@@ -311,4 +311,5 @@ config/prod*
 config/staging*
 config/test*
 
+hack/ignore*
 

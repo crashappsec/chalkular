@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Crash Override, Inc.
+# Copyright (C) 2025-2026 Crash Override, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -6,8 +6,21 @@
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
+CHALKULAR_ENV_FILE ?= .env
+
+# Only if .env file is present
+ifneq (,$(wildcard ${CHALKULAR_ENV_FILE}))
+	include ${CHALKULAR_ENV_FILE}
+endif
+
+
+CHALKULAR_VERSION ?= latest
+export CHALKULAR_VERSION
 # Image URL to use all building/pushing image targets
-IMG ?= chalkular-controller:latest
+CHALKULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/chalkular-controller:$(CHALKULAR_VERSION)
+export CHALKULAR_CONTROLLER_IMG
+CHALKULAR_DOWNLOADER_IMG ?= ghcr.io/crashappsec/chalkular-downloader:$(CHALKULAR_VERSION)
+export CHALKULAR_EXTRACTOR_IMG
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -21,6 +34,10 @@ endif
 # scaffolded by default. However, you might want to replace it to use other
 # tools. (i.e. podman)
 CONTAINER_TOOL ?= docker
+
+$()
+
+LDFLAGS ?= -X main.version=$(CHALKULAR_VERSION) -X main.buildTime=$(shell date -Iseconds) -X main.gitCommit=$(shell git rev-parse --short HEAD)
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -55,9 +72,20 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	$(CONTROLLER_GEN) object paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(MAKE) generate-clientset
 
-.PHONY: fmt
+.PHONY: generate-clientset
+generate-clientset: client-gen ## Generate clientset for our CRDs.
+	@$(CLIENT_GEN) \
+		--input-base "" \
+		--input "github.com/crashappsec/chalkular/api/v1beta1" \
+	 	--clientset-name "clientset" \
+		--output-dir "pkg/generated" \
+		--output-pkg "github.com/crashappsec/chalkular/pkg/generated" \
+		--go-header-file "hack/boilerplate.go.txt" \
+
+.PHONY: fmtg
 fmt: ## Run go fmt against code.
 	go fmt ./...
 
@@ -99,12 +127,14 @@ cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
 
 .PHONY: lint
-lint: golangci-lint ## Run golangci-lint linter
+lint: golangci-lint license-eye ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run
+	$(LICENSE_EYE) header check
 
 .PHONY: lint-fix
-lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
+lint-fix: golangci-lint license-eye ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
+	$(LICENSE_EYE) header fix
 
 .PHONY: lint-config
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
@@ -114,22 +144,39 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+	go build -o bin/manager cmd/controller/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	go run ./cmd/controller/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-.PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+.PHONY: docker-build-all
+docker-build-all: docker-build-controller docker-build-downloader ## Build docker image with the manager.
 
-.PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
+.PHONY: docker-build-controller
+docker-build-controller:  docker-build-img-controller ## Build docker image with the manager.
+
+.PHONY: docker-build-downloader
+docker-build-downloader: docker-build-img-downloader ## Build docker image with the extractor.
+
+docker-build-img-%:
+	$(CONTAINER_TOOL) build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-build-img-%=%) -t $(CHALKULAR_$(shell echo '$(@:docker-build-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) .
+
+.PHONY: docker-push-all
+docker-push-all: docker-push-controller docker-push-extractor ## Push docker both manager and extractor images.
+
+.PHONY: docker-push-controller
+docker-push-controller: docker-push-img-controller ## Push docker image with the manager.
+
+.PHONY: docker-push-downloader
+docker-push-extractor: docker-push-img-downloader ## Push docker image with the extractor.
+
+docker-push-img-%: ## Push docker image with the manager.
+	$(CONTAINER_TOOL) push $(CHALKULAR_$(shell echo '$(@:docker-build-%=%)' | tr '[:lower:]' '[:upper:]')_IMG)
+
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -138,13 +185,23 @@ docker-push: ## Push docker image with the manager.
 # - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
-.PHONY: docker-buildx
-docker-buildx: ## Build and push docker image for the manager for cross-platform support
+PHONY: docker-buildx-all
+docker-buildx-all: docker-buildx-controller  docker-buildx-downloader ## Build and push docker images for both manager and extractor for cross-platform support.
+
+.PHONY: docker-buildx-controller
+docker-buildx-controller: docker-buildx-img-controller ## Build and push docker image for the manager for cross-platform support
+
+.PHONY: docker-buildx-downloader
+docker-buildx-downloader: docker-buildx-img-downloader ## Build and push docker image for the extractor for cross-platform support
+
+docker-buildx-img-%: ## Build and push docker image for the manager for cross-platform support
+	@echo -e "This will build and \e[31m$$(tput bold)push$$(tput sgr0)\e[0m the image $(CHALKULAR_$(shell echo '$(@:docker-buildx-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) for platforms: ${PLATFORMS}."
+	@read -p "press enter to continue, or ctrl-c to abort: "
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name chalkular-builder
 	$(CONTAINER_TOOL) buildx use chalkular-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build  --build-arg LDFLAGS="$(LDFLAGS)" COMMAND=$(@:docker-buildx-img-%=%)  --push --platform=$(PLATFORMS) --tag $(CHALKULAR_$(shell echo '$(@:docker-buildx-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG)  -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm chalkular-builder
 	rm Dockerfile.cross
 
@@ -175,9 +232,17 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
+
+deploy-%: manifests kustomize ## Specify which config folder (%) to deploy to the K8s cluster specified in ~/.kube/config.
+	"$(KUSTOMIZE)" build config/$(@:deploy-%=%) | "$(KUBECTL)" apply -f -
+
+
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
+undeploy-%: manifests kustomize ## Specify which config folder (%) to deploy to the K8s cluster specified in ~/.kube/config.
+	"$(KUSTOMIZE)" build config/$(@:undeploy-%=%) |  "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: refresh-deployment
 refresh-deployment: ## Refresh the controller deployment in the K8s cluster specified in ~/.kube/config.
@@ -198,6 +263,10 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+CLIENT_GEN ?= $(LOCALBIN)/client-gen
+LICENSE_EYE ?= $(LOCALBIN)/license-eye
+FRIZBEEE ?= $(LOCALBIN)/frizbee
+KUBEBUILDER ?= $(LOCALBIN)/kubebuilder
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
@@ -206,7 +275,12 @@ CONTROLLER_TOOLS_VERSION ?= v0.19.0
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-GOLANGCI_LINT_VERSION ?= v2.4.0
+GOLANGCI_LINT_VERSION ?= v2.8.0
+YQ_VERSION ?= v4.47.1
+CODE_GENERATOR_VERSION ?= v0.35.0
+LICENSE_EYE_VERSION ?= v0.8.0
+FRIZBEEE_VERSION ?=  v0.1.7
+KUBEBUILDER_VERSION ?= v4.10.1
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -235,6 +309,28 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+
+yq: $(YQ) ## Download yq locally if necessary.
+$(YQ): $(LOCALBIN)
+	$(call go-install-tool,$(YQ),github.com/mikefarah/yq/v4,$(YQ_VERSION))
+
+client-gen: $(CLIENT_GEN) ## Download code-generator locally if necessary.
+$(CLIENT_GEN): $(LOCALBIN)
+	$(call go-install-tool,$(CLIENT_GEN),k8s.io/code-generator/cmd/client-gen,$(CODE_GENERATOR_VERSION))
+
+license-eye: $(LICENSE_EYE) ## Download skywalking-eyes locally if necessary.
+$(LICENSE_EYE): $(LOCALBIN)
+	$(call go-install-tool,$(LICENSE_EYE),github.com/apache/skywalking-eyes/cmd/license-eye,$(LICENSE_EYE_VERSION))
+
+frizbee: $(FRIZBEEE) ## Download frizbee locally if necessary.
+$(FRIZBEEE): $(LOCALBIN)
+	$(call go-install-tool,$(FRIZBEEE),github.com/stacklok/frizbee,$(FRIZBEEE_VERSION))
+
+kubebuilder: $(KUBEBUILDER) ## Download kubebuilder locally if necessary.
+$(KUBEBUILDER): $(LOCALBIN)
+	$(call go-install-tool,$(KUBEBUILDER),sigs.k8s.io/kubebuilder/v4,$(KUBEBUILDER_VERSION))
+
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Crash Override, Inc.
+// Copyright (C) 2025-2026 Crash Override, Inc.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -49,7 +49,7 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+	cmd := exec.Command("make", "docker-build-controller", fmt.Sprintf("CHALKULAR_CONTROLLER_IMG=%s", projectImage))
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 

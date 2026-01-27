@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Crash Override, Inc.
+// Copyright (C) 2025-2026 Crash Override, Inc.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -215,4 +215,18 @@ func UncommentCode(filename, target, prefix string) error {
 	}
 
 	return nil
+}
+
+// GetModuleRoot returns the path to the root of a Go module
+// via `go list` command. If the command fails to execute,
+// an error will be returned.
+func GetModuleRoot(moduleName string) (string, error) {
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", moduleName)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out.String()), nil
 }

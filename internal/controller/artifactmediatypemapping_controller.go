@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Crash Override, Inc.
+// Copyright (C) 2025-2026 Crash Override, Inc.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -14,7 +14,8 @@ import (
 
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,6 +33,7 @@ type ArtifactMediaTypeMappingReconciler struct {
 // +kubebuilder:rbac:groups=chalkular.ocular.crashoverride.run,resources=artifactmediatypemappings/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=chalkular.ocular.crashoverride.run,resources=artifactmediatypemappings/finalizers,verbs=update
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=profiles,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=downloaders,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -49,31 +51,40 @@ func (r *ArtifactMediaTypeMappingReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	profile, err := r.reconcileChildProfile(ctx, mapping)
-	if err != nil {
-		l.Error(err, "failed to reconcile child profile for artifact mediatype mapping", "name", mapping.Name)
+	if err != nil && apierrors.IsNotFound(err) {
 		mapping.Status.Profile = &chalkularv1beta1.ArtifactMediaTypeMappingProfileStatus{
 			Available: false,
 		}
-		if profile != nil {
-			mapping.Status.Profile.Name = profile.Name
+	} else if err != nil {
+		l.Error(err, "failed to reconcile child profile for artifact mediatype mapping", "name", mapping.Name)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	} else {
+		mapping.Status.Profile = &chalkularv1beta1.ArtifactMediaTypeMappingProfileStatus{
+			Available: true,
+			Ref:       profile,
 		}
-		errStatus := r.Status().Update(ctx, mapping)
-		if errStatus != nil {
-			l.Error(errStatus, "failed to update artifact mediatype mapping status after profile reconciliation failure", "name", mapping.Name)
-			return ctrl.Result{}, errStatus
-		}
-		return ctrl.Result{}, err
 	}
 
-	mapping.Status.Profile = &chalkularv1beta1.ArtifactMediaTypeMappingProfileStatus{
-		Name:      profile.Name,
-		Available: true,
+	downloader, err := r.reconcileChildDownloader(ctx, mapping)
+	if err != nil && apierrors.IsNotFound(err) {
+		mapping.Status.Downloader = &chalkularv1beta1.ArtifactMediaTypeMappingDownloaderStatus{
+			Available: false,
+		}
+	} else if err != nil {
+		l.Error(err, "failed to reconcile child downloader for artifact mediatype mapping", "name", mapping.Name)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	} else {
+		mapping.Status.Downloader = &chalkularv1beta1.ArtifactMediaTypeMappingDownloaderStatus{
+			Available: true,
+			Ref:       downloader,
+		}
 	}
+
 	err = r.Status().Update(ctx, mapping)
 	return ctrl.Result{}, err
 }
 
-func (r *ArtifactMediaTypeMappingReconciler) reconcileChildProfile(ctx context.Context, mapping *chalkularv1beta1.ArtifactMediaTypeMapping) (*ocularv1beta1.Profile, error) {
+func (r *ArtifactMediaTypeMappingReconciler) reconcileChildProfile(ctx context.Context, mapping *chalkularv1beta1.ArtifactMediaTypeMapping) (*v1.ObjectReference, error) {
 	found := &ocularv1beta1.Profile{}
 	if mapping.Spec.Profile.ValueFrom.Name != "" {
 		found = &ocularv1beta1.Profile{
@@ -83,7 +94,7 @@ func (r *ArtifactMediaTypeMappingReconciler) reconcileChildProfile(ctx context.C
 			},
 		}
 		err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: mapping.Spec.Profile.ValueFrom.Name}, found)
-		return found, err
+		return &v1.ObjectReference{Name: found.Name, Namespace: found.Namespace}, err
 	}
 
 	if mapping.Spec.Profile.Value == nil {
@@ -106,20 +117,60 @@ func (r *ArtifactMediaTypeMappingReconciler) reconcileChildProfile(ctx context.C
 	profile.DeepCopyInto(found)
 
 	err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: profile.Name}, found)
-	if err != nil && errors.IsNotFound(err) {
-		// Create the profile
+	if err != nil && apierrors.IsNotFound(err) {
 		err = r.Create(ctx, profile)
-		if err != nil {
-			return nil, err
-		}
-		return profile, err
+		return &v1.ObjectReference{Name: profile.Name, Namespace: profile.Namespace}, err
 	} else if err != nil {
 		return nil, err
 	}
 
-	// Update the profile if needed
 	err = r.Update(ctx, profile)
-	return profile, err
+	return &v1.ObjectReference{Name: profile.Name, Namespace: profile.Namespace}, err
+}
+
+func (r *ArtifactMediaTypeMappingReconciler) reconcileChildDownloader(ctx context.Context, mapping *chalkularv1beta1.ArtifactMediaTypeMapping) (*v1.ObjectReference, error) {
+	found := &ocularv1beta1.Downloader{}
+	if mapping.Spec.Downloader.ValueFrom.Name != "" {
+		found = &ocularv1beta1.Downloader{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: mapping.Namespace,
+				Name:      mapping.Spec.Profile.ValueFrom.Name,
+			},
+		}
+		err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: mapping.Spec.Downloader.ValueFrom.Name}, found)
+		return &v1.ObjectReference{Name: found.Name, Namespace: found.Namespace}, err
+	}
+
+	if mapping.Spec.Downloader.Value == nil {
+		return nil, fmt.Errorf("no value or reference found for downloader")
+	}
+
+	// Downloader is defined inline, create or update it
+	downloader := &ocularv1beta1.Downloader{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "chalkular-" + mapping.Name,
+			Namespace: mapping.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(mapping, chalkularv1beta1.GroupVersion.WithKind("ArtifactMediaTypeMapping")),
+			},
+		},
+		Spec: *mapping.Spec.Downloader.Value,
+	}
+
+	downloader.DeepCopyInto(found)
+
+	err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: downloader.Name}, found)
+	if err != nil && apierrors.IsNotFound(err) {
+		err = r.Create(ctx, downloader)
+		return &v1.ObjectReference{Name: downloader.Name, Namespace: downloader.Namespace}, err
+	} else if err != nil {
+		return nil, err
+	}
+
+	found.Spec = downloader.Spec
+
+	err = r.Update(ctx, found)
+	return &v1.ObjectReference{Name: downloader.Name, Namespace: downloader.Namespace}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.

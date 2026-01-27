@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Crash Override, Inc.
+# Copyright (C) 2025-2026 Crash Override, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,11 +23,12 @@ COPY go.sum go.sum
 
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
-# Copy the Go source (relies on .dockerignore to filter)
-COPY . .
+COPY cmd/$COMMAND cmd/$COMMAND
+COPY api/ api/
+COPY internal/ internal/
 
 RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
-    go build -ldflags="${LDFLAGS}" -o entrypoint cmd/main.go
+    go build -ldflags="${LDFLAGS}" -o entrypoint cmd/$COMMAND/main.go
 
 
 FROM gcr.io/distroless/static:nonroot@sha256:e8a4044e0b4ae4257efa45fc026c0bc30ad320d43bd4c1a7d5271bd241e386d0
