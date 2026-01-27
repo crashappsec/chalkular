@@ -16,20 +16,20 @@ import (
 	// TODO (user): Add any additional imports if needed
 )
 
-var _ = Describe("ArtifactMediaTypeMapping Webhook", func() {
+var _ = Describe("MediaTypePolicy Webhook", func() {
 	var (
-		obj       *chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping
-		oldObj    *chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping
-		validator ArtifactMediaTypeMappingCustomValidator
-		defaulter ArtifactMediaTypeMappingCustomDefaulter
+		obj       *chalkularocularcrashoverriderunv1beta1.MediaTypePolicy
+		oldObj    *chalkularocularcrashoverriderunv1beta1.MediaTypePolicy
+		validator MediaTypePolicyCustomValidator
+		defaulter MediaTypePolicyCustomDefaulter
 	)
 
 	BeforeEach(func() {
-		obj = &chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping{}
-		oldObj = &chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping{}
-		validator = ArtifactMediaTypeMappingCustomValidator{}
+		obj = &chalkularocularcrashoverriderunv1beta1.MediaTypePolicy{}
+		oldObj = &chalkularocularcrashoverriderunv1beta1.MediaTypePolicy{}
+		validator = MediaTypePolicyCustomValidator{}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
-		defaulter = ArtifactMediaTypeMappingCustomDefaulter{}
+		defaulter = MediaTypePolicyCustomDefaulter{}
 		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
@@ -40,7 +40,7 @@ var _ = Describe("ArtifactMediaTypeMapping Webhook", func() {
 		// TODO (user): Add any teardown logic common to all tests
 	})
 
-	Context("When creating ArtifactMediaTypeMapping under Defaulting Webhook", func() {
+	Context("When creating MediaTypePolicy under Defaulting Webhook", func() {
 		// TODO (user): Add logic for defaulting webhooks
 		// Example:
 		// It("Should apply defaults when a required field is empty", func() {
@@ -53,7 +53,7 @@ var _ = Describe("ArtifactMediaTypeMapping Webhook", func() {
 		// })
 	})
 
-	Context("When creating or updating ArtifactMediaTypeMapping under Validating Webhook", func() {
+	Context("When creating or updating MediaTypePolicy under Validating Webhook", func() {
 		// TODO (user): Add logic for validating webhooks
 		// Example:
 		// It("Should deny creation if a required field is missing", func() {

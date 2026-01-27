@@ -6,9 +6,9 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-// Package v1beta1 contains API Schema definitions for the chalkular.ocular.crashoverride.run v1beta1 API group.
+// Package v1beta1 contains API Schema definitions for the chalk.ocular.crashoverride.run v1beta1 API group.
 // +kubebuilder:object:generate=true
-// +groupName=chalkular.ocular.crashoverride.run
+// +groupName=chalk.ocular.crashoverride.run
 package v1beta1
 
 import (
@@ -18,7 +18,7 @@ import (
 
 var (
 	// GroupVersion is group version used to register these objects.
-	GroupVersion = schema.GroupVersion{Group: "chalkular.ocular.crashoverride.run", Version: "v1beta1"}
+	GroupVersion = schema.GroupVersion{Group: "chalk.ocular.crashoverride.run", Version: "v1beta1"}
 	// SchemeGroupVersion is group version used to register these objects.
 	// It is the same as GroupVersion and provided for legacy compatibility.
 	SchemeGroupVersion = GroupVersion

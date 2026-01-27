@@ -117,7 +117,7 @@ func (s *Scheduler) createPipelinesForArtifact(ctx context.Context, artifact nam
 
 	var (
 		pipelines []*ocularV1beta1.Pipeline
-		mappings  = &chalkularv1beta1.ArtifactMediaTypeMappingList{}
+		mappings  = &chalkularv1beta1.MediaTypePolicyList{}
 	)
 
 	if err = s.mgrClient.List(ctx, mappings, client.InNamespace(namespace)); err != nil {

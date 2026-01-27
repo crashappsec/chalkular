@@ -1,7 +1,7 @@
 # This rule is not used by the project chalkular itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants read-only access to chalkular.ocular.crashoverride.run resources.
+# Grants read-only access to chalk.ocular.crashoverride.run resources.
 # This role is intended for users who need visibility into these resources
 # without permissions to modify them. It is ideal for monitoring purposes and limited-access viewing.
 
@@ -11,19 +11,19 @@ metadata:
   labels:
     app.kubernetes.io/name: chalkular
     app.kubernetes.io/managed-by: kustomize
-  name: artifactmediatypemapping-viewer-role
+  name: mediatypepolicy-viewer-role
 rules:
 - apiGroups:
-  - chalkular.ocular.crashoverride.run
+  - chalk.ocular.crashoverride.run
   resources:
-  - artifactmediatypemappings
+  - mediatypepolicies
   verbs:
   - get
   - list
   - watch
 - apiGroups:
-  - chalkular.ocular.crashoverride.run
+  - chalk.ocular.crashoverride.run
   resources:
-  - artifactmediatypemappings/status
+  - mediatypepolicies/status
   verbs:
   - get

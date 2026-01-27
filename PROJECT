@@ -2,7 +2,7 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
-domain: chalkular.ocular.crashoverride.run
+domain: chalk.ocular.crashoverride.run
 layout:
 - go.kubebuilder.io/v4
 projectName: chalkular
@@ -12,9 +12,10 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: chalkular.ocular.crashoverride.run
-  kind: ArtifactMediaTypeMapping
+  domain: chalk.ocular.crashoverride.run
+  kind: MediaTypePolicy
   path: github.com/crashappsec/chalkular/api/v1beta1
+  plural: mediatypepolicies
   version: v1beta1
   webhooks:
     defaulting: true

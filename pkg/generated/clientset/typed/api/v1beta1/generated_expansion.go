@@ -9,4 +9,4 @@
 
 package v1beta1
 
-type ArtifactMediaTypeMappingExpansion interface{}
+type MediaTypePolicyExpansion interface{}

@@ -2,7 +2,7 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/chalkular.ocular.crashoverride.run_artifactmediatypemappings.yaml
+- bases/chalk.ocular.crashoverride.run_mediatypepolicies.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

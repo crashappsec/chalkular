@@ -22,7 +22,6 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the chalkular itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
-- artifactmediatypemapping_admin_role.yaml
-- artifactmediatypemapping_editor_role.yaml
-- artifactmediatypemapping_viewer_role.yaml
-
+- mediatypepolicy_admin_role.yaml
+- mediatypepolicy_editor_role.yaml
+- mediatypepolicy_viewer_role.yaml

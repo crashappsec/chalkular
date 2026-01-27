@@ -5,9 +5,9 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - chalkular.ocular.crashoverride.run
+  - chalk.ocular.crashoverride.run
   resources:
-  - artifactmediatypemappings
+  - mediatypepolicies
   verbs:
   - create
   - delete
@@ -17,15 +17,15 @@ rules:
   - update
   - watch
 - apiGroups:
-  - chalkular.ocular.crashoverride.run
+  - chalk.ocular.crashoverride.run
   resources:
-  - artifactmediatypemappings/finalizers
+  - mediatypepolicies/finalizers
   verbs:
   - update
 - apiGroups:
-  - chalkular.ocular.crashoverride.run
+  - chalk.ocular.crashoverride.run
   resources:
-  - artifactmediatypemappings/status
+  - mediatypepolicies/status
   verbs:
   - get
   - patch

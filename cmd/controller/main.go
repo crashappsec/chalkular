@@ -184,7 +184,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "e8dd21f7.chalkular.ocular.crashoverride.run",
+		LeaderElectionID:       "e8dd21f7.chalk.ocular.crashoverride.run",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -259,17 +259,17 @@ func main() {
 		}
 	}
 
-	if err := (&controller.ArtifactMediaTypeMappingReconciler{
+	if err := (&controller.MediaTypePolicyReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ArtifactMediaTypeMapping")
+		setupLog.Error(err, "unable to create controller", "controller", "MediaTypePolicy")
 		os.Exit(1)
 	}
 	// nolint:goconst
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err := webhookv1beta1.SetupArtifactMediaTypeMappingWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "ArtifactMediaTypeMapping")
+		if err := webhookv1beta1.SetupMediaTypePolicyWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "MediaTypePolicy")
 			os.Exit(1)
 		}
 	}
