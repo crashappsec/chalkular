@@ -10,15 +10,12 @@ package v1beta1
 
 import (
 	"context"
-	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	chalkularocularcrashoverriderunv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
+	chalkocularcrashoverriderunv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 )
 
 // nolint:unused
@@ -27,7 +24,7 @@ var mediatypepolicylog = logf.Log.WithName("mediatypepolicy-resource")
 
 // SetupMediaTypePolicyWebhookWithManager registers the webhook for MediaTypePolicy in the manager.
 func SetupMediaTypePolicyWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&chalkularocularcrashoverriderunv1beta1.MediaTypePolicy{}).
+	return ctrl.NewWebhookManagedBy(mgr, &chalkocularcrashoverriderunv1beta1.MediaTypePolicy{}).
 		WithValidator(&MediaTypePolicyCustomValidator{}).
 		WithDefaulter(&MediaTypePolicyCustomDefaulter{}).
 		Complete()
@@ -39,17 +36,11 @@ func SetupMediaTypePolicyWebhookWithManager(mgr ctrl.Manager) error {
 // Kind MediaTypePolicy when those are created or updated.
 type MediaTypePolicyCustomDefaulter struct{}
 
-var _ webhook.CustomDefaulter = &MediaTypePolicyCustomDefaulter{}
-
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind MediaTypePolicy.
-func (d *MediaTypePolicyCustomDefaulter) Default(_ context.Context, obja runtime.Object) error {
-	obj, ok := obja.(*chalkularocularcrashoverriderunv1beta1.MediaTypePolicy)
-
-	if !ok {
-		return fmt.Errorf("expected an MediaTypePolicy object but got %T", obj)
-	}
+func (d *MediaTypePolicyCustomDefaulter) Default(_ context.Context, obj *chalkocularcrashoverriderunv1beta1.MediaTypePolicy) error {
 	mediatypepolicylog.Info("Defaulting for MediaTypePolicy", "name", obj.GetName())
 
+	// TODO(user): fill in your defaulting logic.
 	return nil
 }
 
@@ -59,28 +50,15 @@ func (d *MediaTypePolicyCustomDefaulter) Default(_ context.Context, obja runtime
 // when it is created, updated, or deleted.
 type MediaTypePolicyCustomValidator struct{}
 
-var _ webhook.CustomValidator = &MediaTypePolicyCustomValidator{}
-
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type MediaTypePolicy.
-func (v *MediaTypePolicyCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	mediatypepolicy, ok := obj.(*chalkularocularcrashoverriderunv1beta1.MediaTypePolicy)
-	if !ok {
-		return nil, fmt.Errorf("expected a MediaTypePolicy object but got %T", obj)
-	}
-	mediatypepolicylog.Info("Validation for MediaTypePolicy upon creation", "name", mediatypepolicy.GetName())
-
-	// TODO(user): fill in your validation logic upon object creation.
-
+func (v *MediaTypePolicyCustomValidator) ValidateCreate(_ context.Context, obj *chalkocularcrashoverriderunv1beta1.MediaTypePolicy) (admission.Warnings, error) {
+	mediatypepolicylog.Info("Validation for MediaTypePolicy upon creation", "name", obj.GetName())
 	return nil, nil
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type MediaTypePolicy.
-func (v *MediaTypePolicyCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	mediatypepolicy, ok := newObj.(*chalkularocularcrashoverriderunv1beta1.MediaTypePolicy)
-	if !ok {
-		return nil, fmt.Errorf("expected a MediaTypePolicy object for the newObj but got %T", newObj)
-	}
-	mediatypepolicylog.Info("Validation for MediaTypePolicy upon update", "name", mediatypepolicy.GetName())
+func (v *MediaTypePolicyCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj *chalkocularcrashoverriderunv1beta1.MediaTypePolicy) (admission.Warnings, error) {
+	mediatypepolicylog.Info("Validation for MediaTypePolicy upon update", "name", newObj.GetName())
 
 	// TODO(user): fill in your validation logic upon object update.
 
@@ -88,12 +66,8 @@ func (v *MediaTypePolicyCustomValidator) ValidateUpdate(_ context.Context, oldOb
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type MediaTypePolicy.
-func (v *MediaTypePolicyCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	mediatypepolicy, ok := obj.(*chalkularocularcrashoverriderunv1beta1.MediaTypePolicy)
-	if !ok {
-		return nil, fmt.Errorf("expected a MediaTypePolicy object but got %T", obj)
-	}
-	mediatypepolicylog.Info("Validation for MediaTypePolicy upon deletion", "name", mediatypepolicy.GetName())
+func (v *MediaTypePolicyCustomValidator) ValidateDelete(_ context.Context, obj *chalkocularcrashoverriderunv1beta1.MediaTypePolicy) (admission.Warnings, error) {
+	mediatypepolicylog.Info("Validation for MediaTypePolicy upon deletion", "name", obj.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.
 
