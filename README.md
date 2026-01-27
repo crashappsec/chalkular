@@ -4,6 +4,11 @@
 
 Chalkular is a service that will listen for requests to analyze container images (called "artifacts") and schedule Ocular pipelines.
 
+Chalkular provides a set of [intake methods](#intake-methods) for the images to schedule pipelines for (see below for the full list).
+When a new image is received via an intake method, the contoller will see if the media type of the image is referenced in
+a `MediaTypePolicy`, a resource managed by Chalkular specifies a pipeline that should be created when an image with a matching
+media type is received.
+
 ## Getting started
 
 1. Configure the intake methods you desire (below)
@@ -13,35 +18,36 @@ Chalkular is a service that will listen for requests to analyze container images
    docker images with profile `analyze` and the downloader `tar-docker` in the `scans` namespace:
 	
 	```yaml
-	apiVersion: chalk.ocular.crashoverride.run/v1beta1
-	kind: MediaTypePolicy
-	metadata:
-		name: docker-mapping
-		namespace: scans
+    apiVersion: chalk.ocular.crashoverride.run/v1beta1
+    kind: MediaTypePolicy
+    metadata:
+        name: docker-mapping
+        namespace: scans
 	spec:
-		mediaTypes:
-			- "application/vnd.oci.image.index.v1+json"
-			- "application/vnd.oci.image.manifest.v1+json"
-		profile:
-			# this assumes 'analyze' exists in 'scans' namespace
-			valueFrom:
-				name: analyze
-		downloader:
-			# this assumes 'tar-docker' exists in 'scans' namespace
-			valueFrom:
-				name: tar-docker
+        mediaTypes:
+            - "application/vnd.oci.image.index.v1+json"
+            - "application/vnd.oci.image.manifest.v1+json"
+        profile:
+            # this assumes 'analyze' exists in 'scans' namespace
+            valueFrom:
+                name: analyze
+        downloader:
+            # this assumes 'tar-docker' exists in 'scans' namespace
+            valueFrom:
+            name: tar-docker
+		# other optional specifications for pipeline
 	```
 3. Send an event to the intake method. The method will take in an OCI image reference and a namespace.
    Chalkular will read the image's media type and then look for artifact media type mappings in the given namespace that
    have the image's media type in the `mediaTypes` list. For each mapping that does, that mappings pipeline will be created.
 4. Viewing the piplines in the namespace should reveal that one was created for the `docker-mapping` mapping
 
-### Intake Methodsx
+### Intake Methods
 
 Chalkular supports the following intake methods for artifacts:
 
-| Protocol | Notes                                                                                                                                                                                                                                                          |
-| ======== | ======================================================================================================================================================================                                                                                         |
+| Method   | Notes                                                                                                                                                                                                                                                          |
+|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `SQS`    | Chalkular will listen for messages from an SQS queue and when it recieves a message, will read the `namespace` and `image_uri` from the message attributes as strings. The SQS queue URL should be passed as the CLI argument `--sqs-queue-url`                |
 | `HTTP`   | Chalkular will start a new webserver and listen for HTTP POST requests for the path `/chalkular/v1bet1/artifacts/analyze`. The port can be set by the CLI arg `--artifact-http-bind-addr`. NOTE: any service or ingress will need to be managed by the enduser |
-	
+
