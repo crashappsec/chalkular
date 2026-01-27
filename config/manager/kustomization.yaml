@@ -8,9 +8,9 @@ images:
   newName: ghcr.io/crashappsec/chalkular-controller
   newTag: latest
 configMapGenerator:
-  - name: controller-manager-config
-    literals:
-      - CHALKULAR_DOWNLOADER_PULLPOLICY=IfNotPresent
-      - CHALKULAR_DOWNLOADER_IMG=ghcr.io/crashappsec/chalkular-downloader:latest
-    options:
-      disableNameSuffixHash: true
+- literals:
+  - CHALKULAR_DOWNLOADER_PULLPOLICY=IfNotPresent
+  - CHALKULAR_DOWNLOADER_IMG=ghcr.io/crashappsec/chalkular-downloader:latest
+  name: controller-manager-config
+  options:
+    disableNameSuffixHash: true

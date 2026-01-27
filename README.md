@@ -7,14 +7,14 @@ Chalkular is a service that will listen for requests to analyze container images
 ## Getting started
 
 1. Configure the intake methods you desire (below)
-2. Create an `ArtifactMediaTypeMapping` resource in the namespace you want your scan to run in.
+2. Create an `MediaTypePolicy` resource in the namespace you want your scan to run in.
    This resource will tell chalkular which pipelines to create for a container image based on
    their media type. For example, the following mapping will start pipelines for standard
    docker images with profile `analyze` and the downloader `tar-docker` in the `scans` namespace:
 	
 	```yaml
-	apiVersion: chalkular.ocular.crashoverride.run/v1beta1
-	kind: ArtifactMediaTypeMapping
+	apiVersion: chalk.ocular.crashoverride.run/v1beta1
+	kind: MediaTypePolicy
 	metadata:
 		name: docker-mapping
 		namespace: scans
@@ -26,17 +26,10 @@ Chalkular is a service that will listen for requests to analyze container images
 			# this assumes 'analyze' exists in 'scans' namespace
 			valueFrom:
 				name: analyze
-			# you can also specify a profile spec 
-			# in 'value' and instead have chalkular manage
-			# the profile for you
 		downloader:
 			# this assumes 'tar-docker' exists in 'scans' namespace
 			valueFrom:
 				name: tar-docker
-			# you can also specify a downloader spec 
-			# in 'value' and instead have chalkular manage
-			# the downloader for you
-			# value: ...
 	```
 3. Send an event to the intake method. The method will take in an OCI image reference and a namespace.
    Chalkular will read the image's media type and then look for artifact media type mappings in the given namespace that

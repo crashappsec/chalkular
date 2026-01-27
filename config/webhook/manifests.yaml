@@ -10,19 +10,19 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-chalkular-ocular-crashoverride-run-v1beta1-artifactmediatypemapping
+      path: /mutate-chalk-ocular-crashoverride-run-v1beta1-mediatypepolicy
   failurePolicy: Fail
-  name: martifactmediatypemapping-v1beta1.kb.io
+  name: mmediatypepolicy-v1beta1.kb.io
   rules:
   - apiGroups:
-    - chalkular.ocular.crashoverride.run
+    - chalk.ocular.crashoverride.run
     apiVersions:
     - v1beta1
     operations:
     - CREATE
     - UPDATE
     resources:
-    - artifactmediatypemappings
+    - mediatypepolicies
   sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -36,17 +36,17 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-chalkular-ocular-crashoverride-run-v1beta1-artifactmediatypemapping
+      path: /validate-chalk-ocular-crashoverride-run-v1beta1-mediatypepolicy
   failurePolicy: Fail
-  name: vartifactmediatypemapping-v1beta1.kb.io
+  name: vmediatypepolicy-v1beta1.kb.io
   rules:
   - apiGroups:
-    - chalkular.ocular.crashoverride.run
+    - chalk.ocular.crashoverride.run
     apiVersions:
     - v1beta1
     operations:
     - CREATE
     - UPDATE
     resources:
-    - artifactmediatypemappings
+    - mediatypepolicies
   sideEffects: None

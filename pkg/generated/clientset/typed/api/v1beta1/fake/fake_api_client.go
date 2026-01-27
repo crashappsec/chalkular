@@ -19,8 +19,8 @@ type FakeApiV1beta1 struct {
 	*testing.Fake
 }
 
-func (c *FakeApiV1beta1) ArtifactMediaTypeMappings(namespace string) v1beta1.ArtifactMediaTypeMappingInterface {
-	return newFakeArtifactMediaTypeMappings(c, namespace)
+func (c *FakeApiV1beta1) MediaTypePolicies(namespace string) v1beta1.MediaTypePolicyInterface {
+	return newFakeMediaTypePolicies(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate

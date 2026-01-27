@@ -23,7 +23,7 @@ import (
 	chalkularocularcrashoverriderunv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 )
 
-var _ = Describe("ArtifactMediaTypeMapping Controller", func() {
+var _ = Describe("MediaTypePolicy Controller", func() {
 	Context("When reconciling a resource", func() {
 		const (
 			resourceName   = "test-resource"
@@ -39,11 +39,11 @@ var _ = Describe("ArtifactMediaTypeMapping Controller", func() {
 		}
 		// profile := &ocularcrashoverriderunv1beta1.Profile{}
 		// downloader := &ocularcrashoverriderunv1beta1.Downloader{}
-		artifactmediatypemapping := &chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping{}
+		mediatypepolicy := &chalkularocularcrashoverriderunv1beta1.MediaTypePolicy{}
 
 		BeforeEach(func() {
 			var err error
-			By("creating the custom resource for the Kind ArtifactMediaTypeMapping")
+			By("creating the custom resource for the Kind MediaTypePolicy")
 
 			// err = k8sClient.Get(ctx, typeNamespacedName, profile)
 			// if err != nil && errors.IsNotFound(err) {
@@ -79,23 +79,23 @@ var _ = Describe("ArtifactMediaTypeMapping Controller", func() {
 			// 	Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			// }
 
-			err = k8sClient.Get(ctx, typeNamespacedName, artifactmediatypemapping)
+			err = k8sClient.Get(ctx, typeNamespacedName, mediatypepolicy)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping{
+				resource := &chalkularocularcrashoverriderunv1beta1.MediaTypePolicy{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMappingSpec{
+					Spec: chalkularocularcrashoverriderunv1beta1.MediaTypePolicySpec{
 						MediaTypes: []string{
 							"my.custom.mediaType/v1beta1",
 						},
-						Profile: chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMappingProfile{
+						Profile: chalkularocularcrashoverriderunv1beta1.MediaTypePolicyProfile{
 							ValueFrom: v1.ObjectReference{
 								Name: profileName,
 							},
 						},
-						Downloader: chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMappingDownloader{
+						Downloader: chalkularocularcrashoverriderunv1beta1.MediaTypePolicyDownloader{
 							ValueFrom: v1.ObjectReference{
 								Name: downloaderName,
 							},
@@ -116,11 +116,11 @@ var _ = Describe("ArtifactMediaTypeMapping Controller", func() {
 			// err = k8sClient.Get(ctx, typeNamespacedName, downloaderResource)
 			// Expect(err).NotTo(HaveOccurred())
 
-			resource := &chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping{}
+			resource := &chalkularocularcrashoverriderunv1beta1.MediaTypePolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance ArtifactMediaTypeMapping")
+			By("Cleanup the specific resource instance MediaTypePolicy")
 			// Expect(k8sClient.Delete(ctx, profileResource)).To(Succeed())
 			// Expect(k8sClient.Delete(ctx, downloaderResource)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -128,7 +128,7 @@ var _ = Describe("ArtifactMediaTypeMapping Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &ArtifactMediaTypeMappingReconciler{
+			controllerReconciler := &MediaTypePolicyReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
@@ -138,7 +138,7 @@ var _ = Describe("ArtifactMediaTypeMapping Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &chalkularocularcrashoverriderunv1beta1.ArtifactMediaTypeMapping{}
+			resource := &chalkularocularcrashoverriderunv1beta1.MediaTypePolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.Profile.Available).To(BeFalse())
