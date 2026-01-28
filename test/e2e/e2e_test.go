@@ -60,8 +60,13 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
+		By("installing Ocular CRDs")
+		cmd = exec.Command("make", "install-ocular")
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to install Ocular CRDs")
+
 		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy-e2e-test", fmt.Sprintf("CHALKULAR_CONTROLLER_IMG=%s", projectImage))
+		cmd = exec.Command("make", "deploy-e2e-test", fmt.Sprintf("CHALKULAR_CONTROLLER_IMG=%s", managerImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
@@ -198,7 +203,8 @@ var _ = Describe("Manager", Ordered, func() {
 				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("controller-runtime.metrics\tServing metrics server"),
+				g.Expect(output).To(
+					ContainSubstring(`"logger":"controller-runtime.metrics","msg":"Serving metrics server"`),
 					"Metrics server not yet started")
 			}
 			Eventually(verifyMetricsServerStarted).Should(Succeed())
