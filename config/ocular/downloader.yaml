@@ -1,0 +1,9 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: ClusterDownloader
+metadata:
+  name: artifacts
+spec:
+  container:
+    name: artifact-extract
+    image: chalkular-downloader:latest
+    imagePullPolicy: IfNotPresent

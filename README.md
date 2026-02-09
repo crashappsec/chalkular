@@ -15,7 +15,7 @@ media type is received.
 2. Create an `MediaTypePolicy` resource in the namespace you want your scan to run in.
    This resource will tell chalkular which pipelines to create for a container image based on
    their media type. For example, the following mapping will start pipelines for standard
-   docker images with profile `analyze` and the downloader `tar-docker` in the `scans` namespace:
+   docker images with profile `analyze` and the cluster downloader `chalkular-artifacts` in the `scans` namespace:
 	
 	```yaml
     apiVersion: chalk.ocular.crashoverride.run/v1beta1
@@ -27,15 +27,13 @@ media type is received.
         mediaTypes:
             - "application/vnd.oci.image.index.v1+json"
             - "application/vnd.oci.image.manifest.v1+json"
-        profile:
-            # this assumes 'analyze' exists in 'scans' namespace
-            valueFrom:
-                name: analyze
-        downloader:
-            # this assumes 'tar-docker' exists in 'scans' namespace
-            valueFrom:
-            name: tar-docker
-		# other optional specifications for pipeline
+		pipelineTemplate:
+			profileRef:
+                name: analyze # this assumes 'analyze' exists in the 'scan' namespace
+			downloaderRef:
+				name: chalkular-artifacts # this is bundled with chalkular install
+				kind: ClusterDownloader 
+			# other optional specifications for pipeline
 	```
 3. Send an event to the intake method. The method will take in an OCI image reference and a namespace.
    Chalkular will read the image's media type and then look for artifact media type mappings in the given namespace that

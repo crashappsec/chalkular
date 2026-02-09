@@ -1,0 +1,11 @@
+# Ocular resources
+resources:
+- downloader.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+
+patches:
+- path: downloader_image_patch.yaml
+  target:
+    kind: Downloader

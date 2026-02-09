@@ -1,0 +1,89 @@
+# Copyright (C) 2025-2026 Crash Override, Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the FSF, either version 3 of the License, or (at your option) any later version.
+# See the LICENSE file in the root of this repository for full license text or
+# visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
+
+name: release
+on:
+  release:
+    types: [created, edited]
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: 1.25
+
+  SUFFIX: ${{ github.event.release.prerelease && '-prerelease' || '' }}
+  RELEASE_NAME: ${{ github.event.release.name }}
+
+jobs:
+  publish-manifest:
+    name: publish manfiest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: setup go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: 'go.mod'
+          cache-dependency-path: 'go.sum'
+      - name: generate manifest
+        run: |
+          make build-installer CHALKULAR_VERSION="$RELEASE_NAME$SUFFIX"
+          mv dist/install.yaml chalkular${SUFFIX}.yaml
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          files: chalkular${{ env.SUFFIX }}.yaml
+  publish-docker:
+    name: publish docker image
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [ controller, downloader ]
+    permissions:
+      packages: write
+      contents: read
+#      id-token: write
+    steps:
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+      - name: checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Chalk
+        uses: crashappsec/setup-chalk-action@6422f6cf3b5a61443c121a48fbca0d8d020b8ad6 # main
+        continue-on-error: true
+      - name: setup qemu
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - name: setup buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: docker build
+        id: docker-build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          platforms: linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
+          push: true
+          build-args: |
+            COMMAND=${{ matrix.image }}
+            LDFLAGS=-s -w -X main.version=${{ github.event.release.tag_name }} -X main.buildTime=${{steps.date.outputs.date}} -X main.gitCommit=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/chalkular-${{ matrix.image }}:${{ env.RELEASE_NAME }}${{ env.SUFFIX }}
+            ghcr.io/${{ github.repository_owner }}/chalkular-${{ matrix.image }}:latest${{ env.SUFFIX }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

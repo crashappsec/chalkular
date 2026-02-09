@@ -11,6 +11,7 @@ package artifacts
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 	ocularV1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -20,6 +21,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/hashicorp/go-multierror"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -107,6 +109,18 @@ func (s *Scheduler) scheduleAnalysis(ctx context.Context, imageRef, namespace st
 	return merr.ErrorOrNil()
 }
 
+func copyLabels(template *chalkularv1beta1.PipelineTemplate) labels.Set {
+	l := make(labels.Set)
+	maps.Copy(l, template.Labels)
+	return l
+}
+
+func copyAnnotations(template *chalkularv1beta1.PipelineTemplate) labels.Set {
+	a := make(labels.Set)
+	maps.Copy(a, template.Annotations)
+	return a
+}
+
 func (s *Scheduler) createPipelinesForArtifact(ctx context.Context, artifact name.Reference, namespace string) ([]*ocularV1beta1.Pipeline, error) {
 	l := log.FromContext(ctx).WithValues("artifact", artifact.String(), "namespace", namespace)
 
@@ -133,28 +147,29 @@ func (s *Scheduler) createPipelinesForArtifact(ctx context.Context, artifact nam
 			l.Info(fmt.Sprintf("skipping mapping %s, downloader unavailable", mapping.Name))
 			continue
 		}
+		pipelineTemplate := mapping.Spec.PipelineTemplate
 		for _, mediaType := range mapping.Spec.MediaTypes {
 			if types.MediaType(mediaType) != desc.MediaType {
 				continue
 			}
+			pipelineLabels := copyLabels(&pipelineTemplate)
+			pipelineAnnotations := copyAnnotations(&pipelineTemplate)
+
 			pipeline := &ocularV1beta1.Pipeline{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: "chalkular-",
 					Namespace:    namespace,
-				},
-				Spec: ocularV1beta1.PipelineSpec{
-					DownloaderRef: *mapping.Status.Downloader.Ref,
-					Target: ocularV1beta1.Target{
-						Identifier: artifact.Context().Name(),
-						Version:    artifact.Identifier(),
-					},
-					ProfileRef:               *mapping.Status.Profile.Ref,
-					TTLSecondsMaxLifetime:    mapping.Spec.TTLSecondsMaxLifetime,
-					TTLSecondsAfterFinished:  mapping.Spec.TTLSecondsAfterFinished,
-					ScanServiceAccountName:   mapping.Spec.ScanServiceAccountName,
-					UploadServiceAccountName: mapping.Spec.UploadServiceAccountName,
+					Annotations:  pipelineAnnotations,
+					Labels:       pipelineLabels,
 				},
 			}
+			pipelineTemplate.Spec.DeepCopyInto(&pipeline.Spec)
+
+			pipeline.Spec.Target = ocularV1beta1.Target{
+				Identifier: artifact.Context().Name(),
+				Version:    artifact.Identifier(),
+			}
+
 			pipelines = append(pipelines, pipeline)
 			break
 		}

@@ -33,6 +33,7 @@ rules:
 - apiGroups:
   - ocular.crashoverride.run
   resources:
+  - clusterdownloaders
   - downloaders
   - pipelines
   - profiles

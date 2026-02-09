@@ -1,0 +1,9 @@
+# Add the --webhook-cert-path argument for configuring the webhook certificate path
+- op: replace
+  path: /spec/container/image
+  value: ghcr.io/crashappsec/chalkular-downloader:latest
+
+  patches:
+- path: downloader_image_patch.yaml
+  target:
+    kind: Downloader
