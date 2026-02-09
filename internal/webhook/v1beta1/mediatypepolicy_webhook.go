@@ -11,6 +11,9 @@ package v1beta1
 import (
 	"context"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -23,10 +26,13 @@ import (
 var mediatypepolicylog = logf.Log.WithName("mediatypepolicy-resource")
 
 // SetupMediaTypePolicyWebhookWithManager registers the webhook for MediaTypePolicy in the manager.
-func SetupMediaTypePolicyWebhookWithManager(mgr ctrl.Manager) error {
+func SetupMediaTypePolicyWebhookWithManager(mgr ctrl.Manager, clusterDownloaderName string) error {
 	return ctrl.NewWebhookManagedBy(mgr, &chalkocularcrashoverriderunv1beta1.MediaTypePolicy{}).
 		WithValidator(&MediaTypePolicyCustomValidator{}).
-		WithDefaulter(&MediaTypePolicyCustomDefaulter{}).
+		WithDefaulter(&MediaTypePolicyCustomDefaulter{
+			downloader:     clusterDownloaderName,
+			downloaderKind: "ClusterDownloader",
+		}).
 		Complete()
 }
 
@@ -34,13 +40,19 @@ func SetupMediaTypePolicyWebhookWithManager(mgr ctrl.Manager) error {
 
 // MediaTypePolicyCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind MediaTypePolicy when those are created or updated.
-type MediaTypePolicyCustomDefaulter struct{}
+type MediaTypePolicyCustomDefaulter struct {
+	downloader     string
+	downloaderKind string
+}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind MediaTypePolicy.
 func (d *MediaTypePolicyCustomDefaulter) Default(_ context.Context, obj *chalkocularcrashoverriderunv1beta1.MediaTypePolicy) error {
 	mediatypepolicylog.Info("Defaulting for MediaTypePolicy", "name", obj.GetName())
 
-	// TODO(user): fill in your defaulting logic.
+	if obj.Spec.PipelineTemplate.Spec.DownloaderRef.Name == "" {
+		obj.Spec.PipelineTemplate.Spec.DownloaderRef.Name = d.downloader
+		obj.Spec.PipelineTemplate.Spec.DownloaderRef.Kind = d.downloaderKind
+	}
 	return nil
 }
 
@@ -53,23 +65,45 @@ type MediaTypePolicyCustomValidator struct{}
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type MediaTypePolicy.
 func (v *MediaTypePolicyCustomValidator) ValidateCreate(_ context.Context, obj *chalkocularcrashoverriderunv1beta1.MediaTypePolicy) (admission.Warnings, error) {
 	mediatypepolicylog.Info("Validation for MediaTypePolicy upon creation", "name", obj.GetName())
-	return nil, nil
+
+	return v.validate(obj)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type MediaTypePolicy.
 func (v *MediaTypePolicyCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj *chalkocularcrashoverriderunv1beta1.MediaTypePolicy) (admission.Warnings, error) {
 	mediatypepolicylog.Info("Validation for MediaTypePolicy upon update", "name", newObj.GetName())
-
-	// TODO(user): fill in your validation logic upon object update.
+	if warnings, err := v.validate(newObj); err != nil {
+		return warnings, err
+	}
 
 	return nil, nil
+}
+
+func (v *MediaTypePolicyCustomValidator) validate(policy *chalkocularcrashoverriderunv1beta1.MediaTypePolicy) (admission.Warnings, error) {
+	var allErrs field.ErrorList
+	target := policy.Spec.PipelineTemplate.Spec.Target
+	if target.Identifier != "" || target.Version != "" {
+		path := field.NewPath("spec").Child("pipelineTemplate").Child("spec").Child("target")
+		allErrs = append(allErrs,
+			field.Invalid(path, target, "target should not be set as it will be set to the received artifact from the listener"))
+	}
+
+	if len(policy.Spec.MediaTypes) == 0 {
+		path := field.NewPath("spec").Child("mediaTypes")
+		allErrs = append(allErrs,
+			field.Invalid(path, policy.Spec.MediaTypes, "media type policy should have at least 1 media type set"))
+	}
+
+	if len(allErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(schema.GroupKind{Group: "chalk.ocular.crashoverride.run", Kind: "MediaTypePolicy"}, policy.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type MediaTypePolicy.
 func (v *MediaTypePolicyCustomValidator) ValidateDelete(_ context.Context, obj *chalkocularcrashoverriderunv1beta1.MediaTypePolicy) (admission.Warnings, error) {
 	mediatypepolicylog.Info("Validation for MediaTypePolicy upon deletion", "name", obj.GetName())
-
-	// TODO(user): fill in your validation logic upon object deletion.
 
 	return nil, nil
 }

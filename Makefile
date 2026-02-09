@@ -17,10 +17,15 @@ endif
 CHALKULAR_VERSION ?= latest
 export CHALKULAR_VERSION
 # Image URL to use all building/pushing image targets
-CHALKULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/chalkular-controller:$(CHALKULAR_VERSION)
+CHALKULAR_CONTROLLER_REPOSITORY ?= ghcr.io/crashappsec/chalkular-controller
+export CHALKULAR_CONTROLLER_REPOSITORY
+CHALKULAR_CONTROLLER_IMG ?= $(CHALKULAR_CONTROLLER_REPOSITORY):$(CHALKULAR_VERSION)
 export CHALKULAR_CONTROLLER_IMG
-CHALKULAR_DOWNLOADER_IMG ?= ghcr.io/crashappsec/chalkular-downloader:$(CHALKULAR_VERSION)
-export CHALKULAR_EXTRACTOR_IMG
+
+CHALKULAR_DOWNLOADER_REPOSITORY ?= ghcr.io/crashappsec/chalkular-downloader
+export CHALKULAR_DOWNLOADER_REPOSITORY
+CHALKULAR_DOWNLOADER_IMG ?= $(CHALKULAR_DOWNLOADER_REPOSITORY):$(CHALKULAR_VERSION)
+export CHALKULAR_DOWNLOADER_IMG
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -34,8 +39,6 @@ endif
 # scaffolded by default. However, you might want to replace it to use other
 # tools. (i.e. podman)
 CONTAINER_TOOL ?= docker
-
-$()
 
 LDFLAGS ?= -X main.version=$(CHALKULAR_VERSION) -X main.buildTime=$(shell date -Iseconds) -X main.gitCommit=$(shell git rev-parse --short HEAD)
 
@@ -211,6 +214,48 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 
+
+# The build-helm chart is a bit hacky right now since kubebuilder doesn't support
+# adding really any customizations to the 'helm/v2-alpha' plugin. So we do some
+# sed/yq magic to get the values we want into the chart after we generate it from
+# the 'config' kustomization.
+# Steps to build helm are:
+# 1. Ensure the helm chart is copied over from the repo 'crashappsec/helm-charts' to 'dist/chart'
+#    The helm chart is stored there to allow for versioning and easier updates.
+# 2. We use 'kubebuilder edit --plugins=helm/v2-alpha' to update the helm chart as a result
+#    of the 'config' kustomization. This will overwrite the existing resources in 'dist/chart'
+# 3. We then use yq/sed to update the values.yaml and Chart.yaml with any customizations we want
+#    to ensure they weren't lost during the 'kubebuilder edit' step.
+# 4. [TO DISTRIBUTE] we then copy the chart to the 'crashappsec/helm-charts' repo for distribution.
+# NOTE: this target only performs steps 2 and 3. Step 1 is a manual step that must be
+#       performed by the developer to ensure the chart is up-to-date before running
+#       this target. Step 4 is also a manual step to push the updated chart to
+#       the 'crashappsec/helm-charts' repo for distribution.
+.PHONY: build-helm
+build-helm: kubebuilder yq ## Generate a helm-chart using kubebuilder
+	@mkdir -p dist
+	@"$(KUBEBUILDER)" edit --plugins=helm/v2-alpha
+	@# update manfiests with any templating or customizations TODO(bryce): have this be one script
+	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.manager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)annotations:/\1annotations:\n\1    {{- range $$key, $$val := .Values.manager.annotations }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)env: \[\]/\1env:\n\1  {{- with .Values.manager.env }}\n\1  {{- toYaml . | nindent 20 }}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.manager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.manager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+image: ).+$$/\1 "{{ .Values.downloader.image.repository }}:{{ .Values.downloader.image.tag }}"/g' dist/chart/templates/extras/artifacts.yaml
+	@sed -i.bak -r 's/^([ ]+imagePullPolicy:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.downloader.image.pullPolicy }}"/g' dist/chart/templates/extras/artifacts.yaml
+	@sed -i.bak -r 's/^([ ]+)(- args:)/\1\2\n\1    {{- if .Values.intake.sqs.enable}}\n\1    - --sqs-queue-url={{ .Values.intake.sqs.queue_url }}\n\1    {{- end }}/' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)(- args:)/\1\2\n\1    {{- if .Values.intake.http.enable}}\n\1    - --artifacts-http-bind-address=:{{ .Values.intake.http.port }}\n\1    - --artifacts-http-secure={{ .Values.intake.http.secure }}\n\1    {{- end }}/' dist/chart/templates/manager/manager.yaml
+	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/extras/artifacts.yaml.bak # cleanup backup file from sed
+	@"$(YQ)" -ie '.manager.image = {"repository": strenv(CHALKULAR_CONTROLLER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' dist/chart/values.yaml
+	@"$(YQ)" -ie '.downloader.image =  {"repository": strenv(CHALKULAR_DOWNLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' dist/chart/values.yaml
+	@"$(YQ)" -ie '.appVersion = (strenv(CHALKULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
+	@"$(YQ)" -ie '.intake = {"http": {"enable": false, "port": 7070, "secure": true}, "sqs": {"enable": false, "queue_url": ""}}' dist/chart/values.yaml
+
+
+.PHONY: clean-helm
+clean-helm: ## Clean up the helm chart generated files
+	@rm -rf dist/chart
+
 ##@ Deployment
 
 ifndef ignore-not-found
@@ -273,6 +318,7 @@ KIND ?= kind
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+YQ ?= $(LOCALBIN)/yq
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 CLIENT_GEN ?= $(LOCALBIN)/client-gen
 LICENSE_EYE ?= $(LOCALBIN)/license-eye
@@ -291,7 +337,7 @@ YQ_VERSION ?= v4.47.1
 CODE_GENERATOR_VERSION ?= v0.35.0
 LICENSE_EYE_VERSION ?= v0.8.0
 FRIZBEEE_VERSION ?=  v0.1.7
-KUBEBUILDER_VERSION ?= v4.10.1
+KUBEBUILDER_VERSION ?= v4.11.1
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.

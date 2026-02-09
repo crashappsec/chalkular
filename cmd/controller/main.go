@@ -66,15 +66,13 @@ func main() {
 	var tlsOpts []func(*tls.Config)
 
 	// custom arguments
+	var clusterDownloaderName string
 	var artifactsHTTPAddr string
 	var artifactsHTTPCertPath, artifactsHTTPCertName, artifactsHTTPCertKey string
 	var secureArtifactsHTTP bool
 	var sqsQueueURL string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
-	flag.StringVar(&artifactsHTTPAddr, "artifacts-http-bind-address", "0",
-		"The address the artifacts web server binds to. Use :7443 for HTTPS or :7070 for HTTP, "+
-			"or leave as 0 to disable the service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -88,8 +86,15 @@ func main() {
 		"The directory that contains the metrics server certificate.")
 	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
+	flag.BoolVar(&enableHTTP2, "enable-http2", false,
+		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
 	// custom flags
+	flag.StringVar(&clusterDownloaderName, "cluster-downloader-name", "chalkular-artifacts",
+		"The name of the cluster downloader to use as the default when no downloader is referenced")
+	flag.StringVar(&artifactsHTTPAddr, "artifacts-http-bind-address", "0",
+		"The address the artifacts web server binds to. Use :7443 for HTTPS or :7070 for HTTP, "+
+			"or leave as 0 to disable the service.")
 	flag.BoolVar(&secureArtifactsHTTP, "artifacts-http-secure", true,
 		"If set, the artifacts HTTP endpoint is served securely via HTTPS."+
 			"Use --artifacts-http-secure=false to use HTTP instead.")
@@ -101,8 +106,6 @@ func main() {
 		"The name of the artifacts HTTP server key file.")
 	flag.StringVar(&sqsQueueURL, "sqs-queue-url", "",
 		"The URL of the SQS queue to listen for new messages on. Omit this flag to disable SQS lisenting")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -261,7 +264,7 @@ func main() {
 	}
 	// nolint:goconst
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err := webhookv1beta1.SetupMediaTypePolicyWebhookWithManager(mgr); err != nil {
+		if err := webhookv1beta1.SetupMediaTypePolicyWebhookWithManager(mgr, clusterDownloaderName); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "MediaTypePolicy")
 			os.Exit(1)
 		}

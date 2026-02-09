@@ -46,6 +46,10 @@ var (
 	testEnv   *envtest.Environment
 )
 
+const (
+	testClusterDownloader = "chalkular-test"
+)
+
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -101,7 +105,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	err = SetupMediaTypePolicyWebhookWithManager(mgr)
+	err = SetupMediaTypePolicyWebhookWithManager(mgr, testClusterDownloader)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:webhook

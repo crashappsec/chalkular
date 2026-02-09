@@ -10,6 +10,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -32,7 +33,7 @@ type MediaTypePolicyReconciler struct {
 // +kubebuilder:rbac:groups=chalk.ocular.crashoverride.run,resources=mediatypepolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=chalk.ocular.crashoverride.run,resources=mediatypepolicies/finalizers,verbs=update
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=profiles,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=downloaders,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=downloaders;clusterdownloaders,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -49,33 +50,31 @@ func (r *MediaTypePolicyReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	profile, err := r.reconcileChildProfile(ctx, mapping)
+	_, err = r.reconcileChildProfile(ctx, mapping)
 	if err != nil && apierrors.IsNotFound(err) {
-		mapping.Status.Profile = &chalkularv1beta1.MediaTypePolicyProfileStatus{
+		mapping.Status.Profile = chalkularv1beta1.MediaTypePolicyProfileStatus{
 			Available: false,
 		}
 	} else if err != nil {
 		l.Error(err, "failed to reconcile child profile for artifact mediatype mapping", "name", mapping.Name)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	} else {
-		mapping.Status.Profile = &chalkularv1beta1.MediaTypePolicyProfileStatus{
+		mapping.Status.Profile = chalkularv1beta1.MediaTypePolicyProfileStatus{
 			Available: true,
-			Ref:       profile,
 		}
 	}
 
-	downloader, err := r.reconcileChildDownloader(ctx, mapping)
+	_, err = r.reconcileChildDownloader(ctx, mapping)
 	if err != nil && apierrors.IsNotFound(err) {
-		mapping.Status.Downloader = &chalkularv1beta1.MediaTypePolicyDownloaderStatus{
+		mapping.Status.Downloader = chalkularv1beta1.MediaTypePolicyDownloaderStatus{
 			Available: false,
 		}
 	} else if err != nil {
 		l.Error(err, "failed to reconcile child downloader for artifact mediatype mapping", "name", mapping.Name)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	} else {
-		mapping.Status.Downloader = &chalkularv1beta1.MediaTypePolicyDownloaderStatus{
+		mapping.Status.Downloader = chalkularv1beta1.MediaTypePolicyDownloaderStatus{
 			Available: true,
-			Ref:       downloader,
 		}
 	}
 
@@ -87,83 +86,27 @@ func (r *MediaTypePolicyReconciler) reconcileChildProfile(ctx context.Context, m
 	found := &ocularv1beta1.Profile{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: mapping.Namespace,
-			Name:      mapping.Spec.Profile.ValueFrom.Name,
+			Name:      mapping.Spec.PipelineTemplate.Spec.ProfileRef.Name,
 		},
 	}
-	err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: mapping.Spec.Profile.ValueFrom.Name}, found)
+	err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: mapping.Spec.PipelineTemplate.Spec.ProfileRef.Name}, found)
 	return &v1.ObjectReference{Name: found.Name, Namespace: found.Namespace}, err
-
-	// if mapping.Spec.Profile.Value == nil {
-	// 	// No profile defined
-	// 	return nil, fmt.Errorf("no value found for profile %s", mapping.Spec.Profile.ValueFrom.Name)
-	// }
-
-	// // Profile is defined inline, create or update it
-	// profile := &ocularv1beta1.Profile{
-	// 	ObjectMeta: metav1.ObjectMeta{
-	// 		Name:      "chalkular-" + mapping.Name,
-	// 		Namespace: mapping.Namespace,
-	// 		OwnerReferences: []metav1.OwnerReference{
-	// 			*metav1.NewControllerRef(mapping, chalkularv1beta1.GroupVersion.WithKind("MediaTypePolicy")),
-	// 		},
-	// 	},
-	// 	Spec: *mapping.Spec.Profile.Value,
-	// }
-
-	// profile.DeepCopyInto(found)
-
-	// err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: profile.Name}, found)
-	// if err != nil && apierrors.IsNotFound(err) {
-	// 	err = r.Create(ctx, profile)
-	// 	return &v1.ObjectReference{Name: profile.Name, Namespace: profile.Namespace}, err
-	// } else if err != nil {
-	// 	return nil, err
-	// }
-
-	// err = r.Update(ctx, profile)
-	// return &v1.ObjectReference{Name: profile.Name, Namespace: profile.Namespace}, err
 }
 
 func (r *MediaTypePolicyReconciler) reconcileChildDownloader(ctx context.Context, mapping *chalkularv1beta1.MediaTypePolicy) (*v1.ObjectReference, error) {
-	found := &ocularv1beta1.Downloader{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: mapping.Namespace,
-			Name:      mapping.Spec.Profile.ValueFrom.Name,
-		},
+	downloaderRef := mapping.Spec.PipelineTemplate.Spec.DownloaderRef
+	switch downloaderRef.Kind {
+	case "", "Downloader":
+		found := &ocularv1beta1.Downloader{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: mapping.Spec.PipelineTemplate.Spec.DownloaderRef.Name}, found)
+		return &v1.ObjectReference{Name: found.Name, Namespace: found.Namespace, Kind: "Downloader"}, err
+	case "ClusterDownloader":
+		found := &ocularv1beta1.ClusterDownloader{}
+		err := r.Get(ctx, client.ObjectKey{Name: downloaderRef.Name}, found)
+		return &v1.ObjectReference{Name: found.Name, Kind: "ClusterDownloader"}, err
+	default:
+		return nil, fmt.Errorf("unknown downloader kind: %s", downloaderRef.Kind)
 	}
-	err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: mapping.Spec.Downloader.ValueFrom.Name}, found)
-	return &v1.ObjectReference{Name: found.Name, Namespace: found.Namespace}, err
-
-	// if mapping.Spec.Downloader.Value == nil {
-	// 	return nil, fmt.Errorf("no value or reference found for downloader")
-	// }
-
-	// // Downloader is defined inline, create or update it
-	// downloader := &ocularv1beta1.Downloader{
-	// 	ObjectMeta: metav1.ObjectMeta{
-	// 		Name:      "chalkular-" + mapping.Name,
-	// 		Namespace: mapping.Namespace,
-	// 		OwnerReferences: []metav1.OwnerReference{
-	// 			*metav1.NewControllerRef(mapping, chalkularv1beta1.GroupVersion.WithKind("MediaTypePolicy")),
-	// 		},
-	// 	},
-	// 	Spec: *mapping.Spec.Downloader.Value,
-	// }
-
-	// downloader.DeepCopyInto(found)
-
-	// err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: downloader.Name}, found)
-	// if err != nil && apierrors.IsNotFound(err) {
-	// 	err = r.Create(ctx, downloader)
-	// 	return &v1.ObjectReference{Name: downloader.Name, Namespace: downloader.Namespace}, err
-	// } else if err != nil {
-	// 	return nil, err
-	// }
-
-	// found.Spec = downloader.Spec
-
-	// err = r.Update(ctx, found)
-	// return &v1.ObjectReference{Name: downloader.Name, Namespace: downloader.Namespace}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.

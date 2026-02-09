@@ -9,7 +9,7 @@
 package v1beta1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -22,87 +22,38 @@ type MediaTypePolicySpec struct {
 	// +required
 	MediaTypes []string `json:"mediaTypes"`
 
-	// Profile is the profile to use for the given media type.
-	// See MediaTypePolicyProfile resource for more information.
-	// +required
-	Profile MediaTypePolicyProfile `json:"profile"`
-
-	// Downloader is the downloader to use for pipelines created for the
-	// [MediaTypes]. If not set, this defaults to cluster chalkular downloader
-	// +required
-	Downloader MediaTypePolicyDownloader `json:"downloader"`
-
-	// ScanServiceAccountName is the name of the service account that will be used to run the scan job.
-	// If not set, the default service account of the namespace will be used.
-	// +optional
-	ScanServiceAccountName string `json:"scanServiceAccountName,omitempty" protobuf:"bytes,4,opt,name=scanServiceAccountName" description:"The name of the service account that will be used to run the scan job."`
-
-	// UploadServiceAccountName is the name of the service account that will be used to run the upload job.
-	// If not set, the default service account of the namespace will be used.
-	// +optional
-	UploadServiceAccountName string `json:"uploadServiceAccountName,omitempty" protobuf:"bytes,5,opt,name=uploadServiceAccountName" description:"The name of the service account that will be used to run the upload job."`
-
-	// TTLSecondsAfterFinished
-	// If set, the pipeline and its associated resources will be automatically deleted
-	// after the specified number of seconds have passed since the pipeline finished.
-	// +optional
-	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"  protobuf:"bytes,6,opt,name=ttlSecondsAfterFinished"`
-
-	// TTLSecondsMaxLifetime
-	// If set, the pipeline and its associated resources will be automatically deleted
-	// after the specified number of seconds have passed since the pipeline was created,
-	// regardless of its state.
-	// +optional
-	TTLSecondsMaxLifetime *int32 `json:"ttlSecondsMaxLifetime,omitempty" protobuf:"bytes,7,opt,name=TTLSecondsMaxLifetime" description:"If set, the pipeline and its associated resources will be automatically deleted after the specified number of seconds have passed since the pipeline was created, regardless of its state."`
+	// PipelineTemplate is the specification of the desired behavior of the
+	// pipeline created for resources
+	// The target field will be set to the target read from
+	// the listener. If not set, the downloader will default
+	// to the chalkular-artifacts cluster downloader.
+	PipelineTemplate PipelineTemplate `json:"pipelineTemplate"`
 }
 
-// MediaTypePolicyProfile defines a reference to a Profile resource
-type MediaTypePolicyProfile struct {
-	// TODO(bryce): eventually user should be able to specify the profile here directly,
-	// unfortunately the spec is too large so it causes issues with the 'last applied' annotation
-	// Value is the Profile resource to use.
+// PipelineTemplateSpec describes the data a Pipeline should have when created from a template
+type PipelineTemplate struct {
+	// Standard object's metadata of the jobs created from this template.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
-	// Value *v1beta1.ProfileSpec `json:"value,omitempty,omitzero" yaml:"value,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
 
-	// ValueFrom is a reference to a Profile resource.
+	// Specification of the desired behavior of the pipeline.
+	// The target field will be set to the target read from
+	// the listener. If not set, the downloader will default
+	// to the chalkular cluster downloader.
 	// +required
-	ValueFrom v1.ObjectReference `json:"valueFrom,omitempty" yaml:"valueFrom,omitempty"`
-}
-
-// MediaTypePolicyDownloader defines a reference to a Downloader resource
-type MediaTypePolicyDownloader struct {
-	// // Value is the Downloader resource to use.
-	// // +optional
-	// Value *v1beta1.DownloaderSpec `json:"value,omitempty,omitzero" yaml:"value,omitempty,omitzero"`
-
-	// ValueFrom is a reference to a Downloader resource.
-	// +required
-	ValueFrom v1.ObjectReference `json:"valueFrom,omitempty" yaml:"valueFrom,omitempty"`
+	Spec ocularv1beta1.PipelineSpec `json:"spec"`
 }
 
 // MediaTypePolicyProfileStatus represents the status of the managed or referenced profile
-// +kubebuilder:validation:XValidation:rule="has(self.available) && self.available ? has(self.ref) : true",message="if the profile is available, the reference must be set"
 type MediaTypePolicyProfileStatus struct {
-	// Ref is a [v1.ObjectReference] that points to the
-	// Profile to be used. This will be set only if [Available]
-	// is true
-	// +optional
-	Ref *v1.ObjectReference `json:"ref,omitempty"`
-
 	// Available indicates whether the Profile resource is available.
 	// +optional
 	Available bool `json:"available"`
 }
 
 // MediaTypePolicyDownloaderStatus represents the status of the managed or referenced downloader
-// +kubebuilder:validation:XValidation:rule="has(self.available) && self.available ? has(self.ref) : true",message="if the downloader is available, the reference must be set"
 type MediaTypePolicyDownloaderStatus struct {
-	// Ref is a [v1.ObjectReference] that points to the
-	// Profile to be used. This will be set only if [Available]
-	// is true
-	// +optional
-	Ref *v1.ObjectReference `json:"ref,omitempty"`
-
 	// Available indicates whether the Downloader resource is available.
 	// +optional
 	Available bool `json:"available"`
@@ -126,11 +77,11 @@ type MediaTypePolicyStatus struct {
 
 	// Profile represents the status of the Profile resource associated with this MediaTypePolicy.
 	// +optional
-	Profile *MediaTypePolicyProfileStatus `json:"profile,omitempty"`
+	Profile MediaTypePolicyProfileStatus `json:"profile,omitempty"`
 
 	// Downloader represents the status of the Downloader resource associated with this MediaTypePolicy.
 	// +optional
-	Downloader *MediaTypePolicyDownloaderStatus `json:"downloader,omitempty"`
+	Downloader MediaTypePolicyDownloaderStatus `json:"downloader,omitempty"`
 }
 
 // +kubebuilder:object:root=true

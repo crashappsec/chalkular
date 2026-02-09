@@ -11,9 +11,10 @@ package v1beta1
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
 
 	chalkularocularcrashoverriderunv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
-	// TODO (user): Add any additional imports if needed
+	"github.com/crashappsec/ocular/api/v1beta1"
 )
 
 var _ = Describe("MediaTypePolicy Webhook", func() {
@@ -29,7 +30,10 @@ var _ = Describe("MediaTypePolicy Webhook", func() {
 		oldObj = &chalkularocularcrashoverriderunv1beta1.MediaTypePolicy{}
 		validator = MediaTypePolicyCustomValidator{}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
-		defaulter = MediaTypePolicyCustomDefaulter{}
+		defaulter = MediaTypePolicyCustomDefaulter{
+			downloader:     testClusterDownloader,
+			downloaderKind: "ClusterDownloader",
+		}
 		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
@@ -40,39 +44,50 @@ var _ = Describe("MediaTypePolicy Webhook", func() {
 	})
 
 	Context("When creating MediaTypePolicy under Defaulting Webhook", func() {
-		// TODO (user): Add logic for defaulting webhooks
-		// Example:
-		// It("Should apply defaults when a required field is empty", func() {
-		//     By("simulating a scenario where defaults should be applied")
-		//     obj.SomeFieldWithDefault = ""
-		//     By("calling the Default method to apply defaults")
-		//     defaulter.Default(ctx, obj)
-		//     By("checking that the default values are set")
-		//     Expect(obj.SomeFieldWithDefault).To(Equal("default_value"))
-		// })
+		It("Should apply defaults when a required field is empty", func() {
+			By("not setting the downloader ref for the pipeline template")
+			obj.Spec.PipelineTemplate.Spec.DownloaderRef = v1.ObjectReference{}
+			By("calling the Default method to apply defaults")
+			Expect(defaulter.Default(ctx, obj)).ToNot(HaveOccurred())
+			By("checking the cluster downloader is set")
+			Expect(obj.Spec.PipelineTemplate.Spec.DownloaderRef.Name).To(Equal(testClusterDownloader))
+			Expect(obj.Spec.PipelineTemplate.Spec.DownloaderRef.Kind).To(Equal("ClusterDownloader"))
+		})
 	})
 
 	Context("When creating or updating MediaTypePolicy under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+		It("Should deny creation if target is set for pipeline", func() {
+			By("setting the target")
+			obj.Spec.PipelineTemplate.Spec.Target.Identifier = "test-identifier"
+			By("setting at least one media type")
+			obj.Spec.MediaTypes = []string{"test"}
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should deny creation if no media types are set", func() {
+			By("not setting the target")
+			obj.Spec.PipelineTemplate.Spec.Target = v1beta1.Target{}
+			By("setting no mediatypes")
+			obj.Spec.MediaTypes = []string{}
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should admit creation if all required fields are present", func() {
+			By("not setting the downloader")
+			obj.Spec.PipelineTemplate.Spec.Target = v1beta1.Target{}
+			By("setting at least one media type")
+			obj.Spec.MediaTypes = []string{"test"}
+			Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
+		})
+
+		It("Should validate updates correctly", func() {
+			By("simulating a valid update scenario")
+			oldObj.Spec.PipelineTemplate.Spec.Target = v1beta1.Target{}
+			obj.Spec.PipelineTemplate.Spec.Target = v1beta1.Target{}
+			oldObj.Spec.MediaTypes = []string{"test1"}
+			obj.Spec.MediaTypes = []string{"test2"}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
+		})
 	})
 
 })

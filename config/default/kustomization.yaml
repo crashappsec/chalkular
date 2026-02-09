@@ -1,19 +1,12 @@
-# Adds namespace to all resources.
 namespace: chalkular-system
-
-# Value of this field is prepended to the
-# names of all resources, e.g. a deployment named
-# "wordpress" becomes "alices-wordpress".
-# Note that it should also match with the prefix (text before '-') of the namespace
-# field above.
 namePrefix: chalkular-
 
-# Labels to add to all resources and selectors.
-#labels:
-#- includeSelectors: true
-#  pairs:
-#    someName: someValue
+images:
+  - name: controller
+    newName: ghcr.io/crashappsec/chalkular-controller
+    newTag: latest
 
+    
 resources:
 - ../crd
 - ../rbac
@@ -22,34 +15,30 @@ resources:
 - ../certmanager
 # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
 #- ../prometheus
-# [METRICS] Expose the controller manager metrics service.
 - metrics_service.yaml
 # [NETWORK POLICY] Protect the /metrics endpoint and Webhook Server with NetworkPolicy.
 # Only Pod(s) running a namespace labeled with 'metrics: enabled' will be able to gather the metrics.
 # Only CR(s) which requires webhooks and are applied on namespaces labeled with 'webhooks: enabled' will
 # be able to communicate with the Webhook Server.
 #- ../network-policy
+- ../ocular
 
-# Uncomment the patches line if you enable Metrics
 patches:
-# [METRICS] The following patch will enable the metrics endpoint using HTTPS and the port :8443.
-# More info: https://book.kubebuilder.io/reference/metrics
 - path: manager_metrics_patch.yaml
   target:
     kind: Deployment
 
-# Uncomment the patches line if you enable Metrics and CertManager
-# [METRICS-WITH-CERTS] To enable metrics protected with certManager, uncomment the following line.
-# This patch will protect the metrics with certManager self-signed certs.
-#- path: cert_metrics_manager_patch.yaml
-#  target:
-#    kind: Deployment
+- path: cert_metrics_manager_patch.yaml
+  target:
+   kind: Deployment
 
-# [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
-# crd/kustomization.yaml
 - path: manager_webhook_patch.yaml
   target:
     kind: Deployment
+
+- path: downloader_image_patch.yaml
+  target:
+    kind: ClusterDownloader
 
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
 # Uncomment the following replacements to add the cert-manager CA injection annotations
@@ -114,7 +103,7 @@ replacements:
 #         index: 1
 #         create: true
 
- - source: # Uncomment the following block if you have any webhook
+ - source:
      kind: Service
      version: v1
      name: webhook-service
@@ -151,7 +140,7 @@ replacements:
          index: 1
          create: true
 
- - source: # Uncomment the following block if you have a ValidatingWebhook (--programmatic-validation)
+ - source:
      kind: Certificate
      group: cert-manager.io
      version: v1
@@ -182,7 +171,7 @@ replacements:
          index: 1
          create: true
 
- - source: # Uncomment the following block if you have a DefaultingWebhook (--defaulting )
+ - source:
      kind: Certificate
      group: cert-manager.io
      version: v1
