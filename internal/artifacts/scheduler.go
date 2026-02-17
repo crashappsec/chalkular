@@ -14,8 +14,9 @@ import (
 	"maps"
 
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
-	ocularV1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/pkg/generated/clientset"
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
@@ -109,28 +110,28 @@ func (s *Scheduler) scheduleAnalysis(ctx context.Context, imageRef, namespace st
 	return merr.ErrorOrNil()
 }
 
-func copyLabels(template *chalkularv1beta1.PipelineTemplate) labels.Set {
+func copyLabels(template *ocularv1beta1.PipelineTemplate) labels.Set {
 	l := make(labels.Set)
 	maps.Copy(l, template.Labels)
 	return l
 }
 
-func copyAnnotations(template *chalkularv1beta1.PipelineTemplate) labels.Set {
+func copyAnnotations(template *ocularv1beta1.PipelineTemplate) labels.Set {
 	a := make(labels.Set)
 	maps.Copy(a, template.Annotations)
 	return a
 }
 
-func (s *Scheduler) createPipelinesForArtifact(ctx context.Context, artifact name.Reference, namespace string) ([]*ocularV1beta1.Pipeline, error) {
+func (s *Scheduler) createPipelinesForArtifact(ctx context.Context, artifact name.Reference, namespace string) ([]*ocularv1beta1.Pipeline, error) {
 	l := log.FromContext(ctx).WithValues("artifact", artifact.String(), "namespace", namespace)
 
-	desc, err := remote.Get(artifact)
+	desc, err := remote.Get(artifact, remote.WithAuthFromKeychain(authn.DefaultKeychain))
 	if err != nil {
 		return nil, err
 	}
 
 	var (
-		pipelines []*ocularV1beta1.Pipeline
+		pipelines []*ocularv1beta1.Pipeline
 		mappings  = &chalkularv1beta1.MediaTypePolicyList{}
 	)
 
@@ -155,7 +156,7 @@ func (s *Scheduler) createPipelinesForArtifact(ctx context.Context, artifact nam
 			pipelineLabels := copyLabels(&pipelineTemplate)
 			pipelineAnnotations := copyAnnotations(&pipelineTemplate)
 
-			pipeline := &ocularV1beta1.Pipeline{
+			pipeline := &ocularv1beta1.Pipeline{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: "chalkular-",
 					Namespace:    namespace,
@@ -165,7 +166,7 @@ func (s *Scheduler) createPipelinesForArtifact(ctx context.Context, artifact nam
 			}
 			pipelineTemplate.Spec.DeepCopyInto(&pipeline.Spec)
 
-			pipeline.Spec.Target = ocularV1beta1.Target{
+			pipeline.Spec.Target = ocularv1beta1.Target{
 				Identifier: artifact.Context().Name(),
 				Version:    artifact.Identifier(),
 			}

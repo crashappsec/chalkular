@@ -65,7 +65,7 @@ var _ = Describe("MediaTypePolicy Controller", func() {
 						MediaTypes: []string{
 							"my.custom.mediaType/v1beta1",
 						},
-						PipelineTemplate: chalkularv1beta1.PipelineTemplate{
+						PipelineTemplate: ocularv1beta1.PipelineTemplate{
 							ObjectMeta: metav1.ObjectMeta{
 								Labels: map[string]string{
 									"chalk.ocular.crashoverride.run/test": "true",
@@ -75,8 +75,10 @@ var _ = Describe("MediaTypePolicy Controller", func() {
 								ProfileRef: v1.ObjectReference{
 									Name: profileName,
 								},
-								DownloaderRef: v1.ObjectReference{
-									Name: downloaderName,
+								DownloaderRef: ocularv1beta1.ParameterizedObjectReference{
+									ObjectReference: v1.ObjectReference{
+										Name: downloaderName,
+									},
 								},
 							},
 						},

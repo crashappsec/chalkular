@@ -11,7 +11,6 @@ package v1beta1
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
 
 	chalkularocularcrashoverriderunv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -46,7 +45,7 @@ var _ = Describe("MediaTypePolicy Webhook", func() {
 	Context("When creating MediaTypePolicy under Defaulting Webhook", func() {
 		It("Should apply defaults when a required field is empty", func() {
 			By("not setting the downloader ref for the pipeline template")
-			obj.Spec.PipelineTemplate.Spec.DownloaderRef = v1.ObjectReference{}
+			obj.Spec.PipelineTemplate.Spec.DownloaderRef = v1beta1.ParameterizedObjectReference{}
 			By("calling the Default method to apply defaults")
 			Expect(defaulter.Default(ctx, obj)).ToNot(HaveOccurred())
 			By("checking the cluster downloader is set")

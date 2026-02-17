@@ -93,17 +93,24 @@ func (r *MediaTypePolicyReconciler) reconcileChildProfile(ctx context.Context, m
 	return &v1.ObjectReference{Name: found.Name, Namespace: found.Namespace}, err
 }
 
-func (r *MediaTypePolicyReconciler) reconcileChildDownloader(ctx context.Context, mapping *chalkularv1beta1.MediaTypePolicy) (*v1.ObjectReference, error) {
+func (r *MediaTypePolicyReconciler) reconcileChildDownloader(ctx context.Context, mapping *chalkularv1beta1.MediaTypePolicy) (*ocularv1beta1.ParameterizedObjectReference, error) {
 	downloaderRef := mapping.Spec.PipelineTemplate.Spec.DownloaderRef
 	switch downloaderRef.Kind {
 	case "", "Downloader":
 		found := &ocularv1beta1.Downloader{}
 		err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: mapping.Spec.PipelineTemplate.Spec.DownloaderRef.Name}, found)
-		return &v1.ObjectReference{Name: found.Name, Namespace: found.Namespace, Kind: "Downloader"}, err
+		return &ocularv1beta1.ParameterizedObjectReference{
+			ObjectReference: v1.ObjectReference{
+				Name: found.Name, Namespace: found.Namespace, Kind: "Downloader"},
+			Parameters: downloaderRef.Parameters}, err
 	case "ClusterDownloader":
 		found := &ocularv1beta1.ClusterDownloader{}
 		err := r.Get(ctx, client.ObjectKey{Name: downloaderRef.Name}, found)
-		return &v1.ObjectReference{Name: found.Name, Kind: "ClusterDownloader"}, err
+		return &ocularv1beta1.ParameterizedObjectReference{
+			ObjectReference: v1.ObjectReference{
+				Name: found.Name, Kind: "ClusterDownloader",
+			},
+			Parameters: downloaderRef.Parameters}, err
 	default:
 		return nil, fmt.Errorf("unknown downloader kind: %s", downloaderRef.Kind)
 	}

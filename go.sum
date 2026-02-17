@@ -57,6 +57,10 @@ github.com/crashappsec/ocular v0.2.6-0.20260209192818-ccf1c48019ec h1:Y3ztYHzSZn
 github.com/crashappsec/ocular v0.2.6-0.20260209192818-ccf1c48019ec/go.mod h1:6aVBO2SoYTR3W0gSJdwE0ri27NquN2fyowUHFuujF04=
 github.com/crashappsec/ocular v0.2.6-beta.1 h1:6zXzMLeNWcYPvZLeSpgGjm94HZBA63xHEHY6wAMm0OM=
 github.com/crashappsec/ocular v0.2.6-beta.1/go.mod h1:6aVBO2SoYTR3W0gSJdwE0ri27NquN2fyowUHFuujF04=
+github.com/crashappsec/ocular v0.2.6-beta.5 h1:k6ZcQTrmBbDnUhyrO06YuNJ6Yd3AjzyVPfb3h/hYjNk=
+github.com/crashappsec/ocular v0.2.6-beta.5/go.mod h1:q7yn7s+ntp5snYlMR0lyCl6lqfd5Vz/rtWom2TdbcXE=
+github.com/crashappsec/ocular v0.2.6 h1:EhVvXAsAiOEzWsYVywzx5aIFKSc9JVOJjX5cb1yVcDk=
+github.com/crashappsec/ocular v0.2.6/go.mod h1:q7yn7s+ntp5snYlMR0lyCl6lqfd5Vz/rtWom2TdbcXE=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

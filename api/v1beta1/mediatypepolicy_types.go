@@ -9,7 +9,7 @@
 package v1beta1
 
 import (
-	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -27,22 +27,7 @@ type MediaTypePolicySpec struct {
 	// The target field will be set to the target read from
 	// the listener. If not set, the downloader will default
 	// to the chalkular-artifacts cluster downloader.
-	PipelineTemplate PipelineTemplate `json:"pipelineTemplate"`
-}
-
-// PipelineTemplateSpec describes the data a Pipeline should have when created from a template
-type PipelineTemplate struct {
-	// Standard object's metadata of the jobs created from this template.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
-	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
-
-	// Specification of the desired behavior of the pipeline.
-	// The target field will be set to the target read from
-	// the listener. If not set, the downloader will default
-	// to the chalkular cluster downloader.
-	// +required
-	Spec ocularv1beta1.PipelineSpec `json:"spec"`
+	PipelineTemplate v1beta1.PipelineTemplate `json:"pipelineTemplate"`
 }
 
 // MediaTypePolicyProfileStatus represents the status of the managed or referenced profile
