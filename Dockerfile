@@ -7,7 +7,7 @@
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
 # Build the manager binary
-FROM golang:1.25@sha256:ce63a16e0f7063787ebb4eb28e72d477b00b4726f79874b3205a965ffd797ab2 AS builder
+FROM golang:1.25@sha256:931c889bca758a82fcbfcb1b6ed6ca1de30783e9e52e6093ad50060735cb99be AS builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG LDFLAGS="-w -s"
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS:-linux} 
     go build -ldflags="${LDFLAGS}" -o entrypoint cmd/$COMMAND/main.go
 
 
-FROM gcr.io/distroless/static:nonroot@sha256:cba10d7abd3e203428e86f5b2d7fd5eb7d8987c387864ae4996cf97191b33764
+FROM gcr.io/distroless/static:nonroot@sha256:f512d819b8f109f2375e8b51d8cfd8aafe81034bc3e319740128b7d7f70d5036
 
 WORKDIR /
 COPY --from=builder /workspace/entrypoint .
