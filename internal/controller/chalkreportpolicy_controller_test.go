@@ -15,16 +15,18 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
+	"github.com/crashappsec/chalkular/internal/policy"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
-var _ = Describe("MediaTypePolicy Controller", func() {
+var _ = Describe("ChalkReportPolicy Controller", Ordered, func() {
 	Context("When reconciling a resource", func() {
 		const (
 			resourceName   = "test-resource"
@@ -48,32 +50,36 @@ var _ = Describe("MediaTypePolicy Controller", func() {
 			Namespace: "default",
 		}
 
-		mediatypepolicy := &chalkularv1beta1.MediaTypePolicy{}
+		reportPolicy := &chalkularv1beta1.ChalkReportPolicy{}
+		var policyCompiler *policy.Compiler
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			var err error
-			By("creating the custom resource for the Kind MediaTypePolicy")
+			By("creating the custom resource for the Kind ChalkReportPolicy")
 
-			err = k8sClient.Get(ctx, typeNamespacedName, mediatypepolicy)
+			err = k8sClient.Get(ctx, typeNamespacedName, reportPolicy)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &chalkularv1beta1.MediaTypePolicy{
+				resource := &chalkularv1beta1.ChalkReportPolicy{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: chalkularv1beta1.MediaTypePolicySpec{
-						MediaTypes: []string{
-							"my.custom.mediaType/v1beta1",
+					Spec: chalkularv1beta1.ChalkReportPolicySpec{
+						MatchCondition: "report['_ACTION_ID'] == 'test'",
+						Extraction: chalkularv1beta1.ChalkReportPolicyExtraction{
+							Target: "{'identifier': 'testing', 'version': '1'}",
 						},
 						PipelineTemplate: ocularv1beta1.PipelineTemplate{
-							ObjectMeta: metav1.ObjectMeta{
-								Labels: map[string]string{
-									"chalk.ocular.crashoverride.run/test": "true",
-								},
-							},
+							// ObjectMeta: metav1.ObjectMeta{
+							// 	Labels: map[string]string{
+							// 		"chalk.ocular.crashoverride.run/test": "true",
+							// 	},
+							// },
 							Spec: ocularv1beta1.PipelineSpec{
-								ProfileRef: v1.ObjectReference{
-									Name: profileName,
+								ProfileRef: ocularv1beta1.ParameterizedObjectReference{
+									ObjectReference: v1.ObjectReference{
+										Name: profileName,
+									},
 								},
 								DownloaderRef: ocularv1beta1.ParameterizedObjectReference{
 									ObjectReference: v1.ObjectReference{
@@ -86,24 +92,28 @@ var _ = Describe("MediaTypePolicy Controller", func() {
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
+
+			By("creating policy compiler")
+			policyCompiler, err = policy.NewCompiler(5)
+			Expect(err).To(Not(HaveOccurred()))
 		})
 
-		AfterEach(func() {
+		AfterAll(func() {
 			var err error
-
-			resource := &chalkularv1beta1.MediaTypePolicy{}
+			resource := &chalkularv1beta1.ChalkReportPolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance MediaTypePolicy")
+			By("Cleanup the specific resource instance ChalkReportPolicy")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 
 		})
-		It("should set the downloader and profile status to false when not available", func() {
-			By("Reconciling the created meidatypepolicy when both dont exist")
-			controllerReconciler := &MediaTypePolicyReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+		It("should add the cache finalizer to the resource", func() {
+			By("Reconciling the created chalk report policy")
+			controllerReconciler := &ChalkReportPolicyReconciler{
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				PolicyCompiler: policyCompiler,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -111,14 +121,32 @@ var _ = Describe("MediaTypePolicy Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &chalkularv1beta1.MediaTypePolicy{}
+			resource := &chalkularv1beta1.ChalkReportPolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resource.Status.Profile.Available).To(BeFalse())
-			Expect(resource.Status.Downloader.Available).To(BeFalse())
+			Expect(resource.Finalizers).To(ContainElement(policyCacheFinalizer))
+		})
+		It("should set the downloader and profile status to false when not available", func() {
+			By("Reconciling the created meidatypepolicy when both dont exist")
+			controllerReconciler := &ChalkReportPolicyReconciler{
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				PolicyCompiler: policyCompiler,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			resource := &chalkularv1beta1.ChalkReportPolicy{}
+			err = k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resource.Status.ProfileValid).To(BeFalse())
+			Expect(resource.Status.DownloaderValid).To(BeFalse())
 		})
 		It("should set the downloader and profile status to true when available", func() {
-			By("Creating the profile and downloader, then reconciling the mediatypepolicy")
+			By("Creating the profile and downloader, then reconciling the report policy")
 			profile := &ocularv1beta1.Profile{}
 			downloader := &ocularv1beta1.Downloader{}
 			err := k8sClient.Get(ctx, profileNamespacedName, profile)
@@ -129,10 +157,14 @@ var _ = Describe("MediaTypePolicy Controller", func() {
 						Namespace: "default",
 					},
 					Spec: ocularv1beta1.ProfileSpec{
-						Containers: []v1.Container{{
-							Name:  "my-scanner",
-							Image: "my-scanner:latest",
-						}},
+						Containers: []ocularv1beta1.ConditionalContainer{
+							{
+								Container: v1.Container{
+									Name:  "my-scanner",
+									Image: "my-scanner:latest",
+								},
+							},
+						},
 					},
 				}
 				Expect(k8sClient.Create(ctx, profile)).To(Succeed())
@@ -159,9 +191,10 @@ var _ = Describe("MediaTypePolicy Controller", func() {
 			}
 			Expect(err).NotTo(HaveOccurred())
 
-			controllerReconciler := &MediaTypePolicyReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+			controllerReconciler := &ChalkReportPolicyReconciler{
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				PolicyCompiler: policyCompiler,
 			}
 
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -169,14 +202,33 @@ var _ = Describe("MediaTypePolicy Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &chalkularv1beta1.MediaTypePolicy{}
+			resource := &chalkularv1beta1.ChalkReportPolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resource.Status.Profile.Available).To(BeTrue())
-			Expect(resource.Status.Downloader.Available).To(BeTrue())
+			Expect(resource.Status.ProfileValid).To(BeTrue())
+			Expect(resource.Status.DownloaderValid).To(BeTrue())
 
 			Expect(k8sClient.Delete(ctx, profile)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, downloader)).To(Succeed())
+		})
+
+		It("should compile the policy and store it in the cache", func() {
+			By("reconciling the object after status is updated")
+			controllerReconciler := &ChalkReportPolicyReconciler{
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				PolicyCompiler: policyCompiler,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			resource := &chalkularv1beta1.ChalkReportPolicy{}
+			err = k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(meta.IsStatusConditionTrue(resource.Status.Conditions, "Ready")).To(BeTrue(), "report policy not in Ready status")
+
 		})
 	})
 })

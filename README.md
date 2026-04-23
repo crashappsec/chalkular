@@ -17,24 +17,37 @@ media type is received.
    their media type. For example, the following mapping will start pipelines for standard
    docker images with profile `analyze` and the cluster downloader `chalkular-artifacts` in the `scans` namespace:
 	
-	```yaml
+    ```yaml
     apiVersion: chalk.ocular.crashoverride.run/v1beta1
-    kind: MediaTypePolicy
+    kind: ChalkReportPolicy
     metadata:
-        name: docker-mapping
-        namespace: scans
-	spec:
-        mediaTypes:
-            - "application/vnd.oci.image.index.v1+json"
-            - "application/vnd.oci.image.manifest.v1+json"
-		pipelineTemplate:
-			profileRef:
-                name: analyze # this assumes 'analyze' exists in the 'scan' namespace
-			downloaderRef:
-				name: chalkular-artifacts # this is bundled with chalkular install
-				kind: ClusterDownloader 
-			# other optional specifications for pipeline
-	```
+      name: docker-images
+	  namespace: scan
+    spec:
+      matchCondition: 'chalk._OP_ARTIFACT_TYPE == "Docker Image"'
+      extraction:
+        target: |
+          {
+	        'identifier': chalk._X_OCULAR_TARGET_IDENTIFIER,
+	        'version': chalk._X_OCULAR_TARGET_VERSION
+          }
+        downloaderParams: |
+          { 'MEDIA_TYPE': chalk._X_OCULAR_MEDIA_TYPE }
+        profileParams: |
+          {
+            'RUN_SECRETSCANNER': report.X_CHALK_PROFILE_CONFIG.runSecretScanner ? "1" : "",
+            'RUN_SBOM': report.X_CHALK_PROFILE_CONFIG.runSbomTools ? "1" : "",
+            'RUN_SAST': report.X_CHALK_PROFILE_CONFIG.runSastTools ? "1" : ""
+          }
+      pipelineTemplate:
+        profileRef:
+		  name: analyze # this assumes 'analyze' exists in the 'scan' namespace
+		  namespace: scan
+        downloaderRef:
+          name: chalkular-artifacts # this is bundled with chalkular install
+          kind: ClusterDownloader
+        # other optional specifications for pipeline
+    ```
 3. Send an event to the intake method. The method will take in an OCI image reference and a namespace.
    Chalkular will read the image's media type and then look for artifact media type mappings in the given namespace that
    have the image's media type in the `mediaTypes` list. For each mapping that does, that mappings pipeline will be created.

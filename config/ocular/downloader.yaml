@@ -7,3 +7,15 @@ spec:
     name: artifact-extract
     image: chalkular-downloader:latest
     imagePullPolicy: IfNotPresent
+    env: []
+    volumeMounts: []
+  metadataFiles:
+    - chalk.json
+  parameters:
+    - name: PLATFORM
+      default: ""
+      description: "Which platform to download for the image"
+    - name: INSECURE_REGISTRY
+      default: ""
+      description: "If set to a non-empty value, registry connection uses http"
+  volumes: []

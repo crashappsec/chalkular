@@ -18,9 +18,9 @@ resources:
     namespaced: true
   controller: true
   domain: chalk.ocular.crashoverride.run
-  kind: MediaTypePolicy
+  kind: ChalkReportPolicy
   path: github.com/crashappsec/chalkular/api/v1beta1
-  plural: mediatypepolicies
+  plural: chalkreportpolicies
   version: v1beta1
   webhooks:
     defaulting: true

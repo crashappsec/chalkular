@@ -1,0 +1,10 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: report-uploader
+rules:
+- nonResourceURLs:
+  - "/api/v1beta1/chalk/report"
+  verbs:
+  - post
+

@@ -11,12 +11,12 @@ metadata:
   labels:
     app.kubernetes.io/name: chalkular
     app.kubernetes.io/managed-by: kustomize
-  name: mediatypepolicy-editor-role
+  name: chalkreportpolicy-editor-role
 rules:
 - apiGroups:
   - chalk.ocular.crashoverride.run
   resources:
-  - mediatypepolicies
+  - chalkreportpolicies
   verbs:
   - create
   - delete
@@ -28,6 +28,6 @@ rules:
 - apiGroups:
   - chalk.ocular.crashoverride.run
   resources:
-  - mediatypepolicies/status
+  - chalkreportpolicies/status
   verbs:
   - get

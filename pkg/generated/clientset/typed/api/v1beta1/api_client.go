@@ -19,7 +19,7 @@ import (
 
 type ApiV1beta1Interface interface {
 	RESTClient() rest.Interface
-	MediaTypePoliciesGetter
+	ChalkReportPoliciesGetter
 }
 
 // ApiV1beta1Client is used to interact with features provided by the api group.
@@ -27,8 +27,8 @@ type ApiV1beta1Client struct {
 	restClient rest.Interface
 }
 
-func (c *ApiV1beta1Client) MediaTypePolicies(namespace string) MediaTypePolicyInterface {
-	return newMediaTypePolicies(c, namespace)
+func (c *ApiV1beta1Client) ChalkReportPolicies(namespace string) ChalkReportPolicyInterface {
+	return newChalkReportPolicies(c, namespace)
 }
 
 // NewForConfig creates a new ApiV1beta1Client for the given config.

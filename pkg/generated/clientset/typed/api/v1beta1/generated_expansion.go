@@ -9,4 +9,4 @@
 
 package v1beta1
 
-type MediaTypePolicyExpansion interface{}
+type ChalkReportPolicyExpansion interface{}

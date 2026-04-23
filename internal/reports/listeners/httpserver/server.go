@@ -16,19 +16,31 @@ import (
 	"net/http"
 	"path"
 
-	"github.com/crashappsec/chalkular/internal/artifacts"
+	v1beta1 "github.com/crashappsec/chalkular/api/v1beta1/httpserver"
+	"github.com/crashappsec/chalkular/internal/reports"
 	"github.com/gin-gonic/gin"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type Server struct {
-	opts          Options
-	engine        *gin.Engine
-	analyzeClient *artifacts.SchedulerClient
+	opts            Options
+	engine          *gin.Engine
+	schedulerClient *reports.SchedulerClient
 }
 
-func NewServer(config *rest.Config, httpClient *http.Client, client *artifacts.SchedulerClient, opts Options) (*Server, error) {
+type Options struct {
+	BindAddress string
+	Secure      bool
+	CertDir     string
+	CertName    string
+	KeyName     string
+	TlSOpts     []func(*tls.Config)
+
+	DevelopmentMode bool
+}
+
+func NewServer(config *rest.Config, httpClient *http.Client, client *reports.SchedulerClient, opts Options) (*Server, error) {
 	if opts.DevelopmentMode {
 		gin.SetMode(gin.DebugMode)
 	} else {
@@ -40,8 +52,8 @@ func NewServer(config *rest.Config, httpClient *http.Client, client *artifacts.S
 	engine.Use(gin.Logger(), gin.Recovery())
 
 	s := &Server{
-		opts:          opts,
-		analyzeClient: client,
+		opts:            opts,
+		schedulerClient: client,
 	}
 
 	authN, authZ, err := createAuthClients(config, httpClient)
@@ -51,9 +63,9 @@ func NewServer(config *rest.Config, httpClient *http.Client, client *artifacts.S
 
 	engine.GET("/health", health())
 
-	v1beta1 := engine.Group("/chalkular/v1beta1", authorizationMiddleware(authN, authZ))
+	apiV1beta1 := engine.Group("/api/v1beta1", authorizationMiddleware(authN, authZ))
 	{
-		v1beta1.POST("/artifacts/analyze", analyzeArtifact(s.analyzeClient))
+		apiV1beta1.POST("/chalk/report", scheduleReport(s.schedulerClient))
 	}
 
 	s.engine = engine
@@ -103,4 +115,19 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("error shutting down server: %w", err)
 	}
 	return ctx.Err()
+}
+
+func errorResponse(c *gin.Context, code int, message string) {
+	c.AbortWithStatusJSON(code, v1beta1.APIResponse[struct{}]{
+		Code:    code,
+		Message: message,
+	})
+}
+
+func health() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"health": "ok",
+		})
+	}
 }

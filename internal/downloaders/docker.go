@@ -20,5 +20,10 @@ import (
 func DownloadDockerImage(ctx context.Context, ref name.Reference, img v1.Image, path string) error {
 	l := log.FromContext(ctx)
 	l.Info("writing docker image to tarball", "ref", ref.String(), "path", path)
-	return tarball.WriteToFile(path, ref, img)
+	err := tarball.WriteToFile(path, ref, img)
+	if err != nil {
+		return err
+	}
+
+	return ExtractChalkFromImage(ctx, ref, img)
 }

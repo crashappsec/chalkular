@@ -6,20 +6,19 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-package artifacts
+package chalk
 
-import (
-	"context"
+// Key is a string key for a item
+// instead a chalk report or chalk mark
+type Key = string
+
+const (
+	// KeyActionID is the chalk report key
+	// for the action ID value.
+	KeyActionID Key = "_ACTION_ID"
+
+	// KeyChalks is the chalk report key
+	// that will contain a list of chalk marks
+	// created from the operation.
+	KeyChalks Key = "_CHALKS"
 )
-
-type SchedulerClient struct {
-	eventBus eventBus
-}
-
-func (c *SchedulerClient) Analyze(ctx context.Context, imageRef string, namespace string) error {
-	c.eventBus <- analysisRequest{
-		ImageRef:  imageRef,
-		Namespace: namespace,
-	}
-	return nil
-}

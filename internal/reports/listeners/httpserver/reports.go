@@ -9,42 +9,33 @@
 package httpserver
 
 import (
+	"fmt"
 	"net/http"
 
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
 	v1beta1 "github.com/crashappsec/chalkular/api/v1beta1/httpserver"
-	"github.com/crashappsec/chalkular/internal/artifacts"
+	"github.com/crashappsec/chalkular/internal/reports"
 	"github.com/gin-gonic/gin"
 )
 
-func errorResponse(c *gin.Context, code int, message string) {
-	c.AbortWithStatusJSON(code, v1beta1.APIResponse[struct{}]{
-		Code:    code,
-		Message: message,
-	})
-}
+var reportslog = logf.Log.WithName("reports-http")
 
-func analyzeArtifact(scheduler *artifacts.SchedulerClient) gin.HandlerFunc {
+func scheduleReport(scheduler *reports.SchedulerClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req v1beta1.ScheduleArtifactAnalysisRequest
-		if err := c.Bind(&req); err != nil {
+		var reports []map[string]any
+		if err := c.BindJSON(&reports); err != nil {
 			errorResponse(c, http.StatusBadRequest, "unable to parse request")
 			return
 		}
-		if err := scheduler.Analyze(c, req.ImageURI, req.Namespace); err != nil {
-			errorResponse(c, http.StatusInternalServerError, "unable to schedule request")
-			return
+
+		reportslog.Info("received report upload", "count", len(reports))
+		for _, report := range reports {
+			_ = scheduler.NewReport(c, report)
 		}
 		c.JSON(http.StatusOK, v1beta1.APIResponse[struct{}]{
 			Code:    http.StatusOK,
-			Message: "artifact analysis queued successfully",
-		})
-	}
-}
-
-func health() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"health": "ok",
+			Message: fmt.Sprintf("processed %d reports", len(reports)),
 		})
 	}
 }

@@ -6,17 +6,23 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-package httpserver
+package reports
 
-import "crypto/tls"
+import (
+	"context"
+)
 
-type Options struct {
-	BindAddress string
-	Secure      bool
-	CertDir     string
-	CertName    string
-	KeyName     string
-	TlSOpts     []func(*tls.Config)
+type SchedulerResult chan error
 
-	DevelopmentMode bool
+type SchedulerClient struct {
+	eventBus eventBus
+}
+
+func (c *SchedulerClient) NewReport(_ context.Context, report ChalkReport) SchedulerResult {
+	done := make(SchedulerResult, 1)
+	c.eventBus <- event{
+		Report: report,
+		Result: done,
+	}
+	return done
 }

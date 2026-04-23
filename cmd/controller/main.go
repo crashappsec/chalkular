@@ -9,14 +9,13 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
 	"os"
 
-	"github.com/crashappsec/chalkular/internal/artifacts"
-	"github.com/crashappsec/chalkular/internal/artifacts/listeners/httpserver"
-	"github.com/crashappsec/chalkular/internal/artifacts/listeners/sqs"
+	"github.com/crashappsec/chalkular/internal/policy"
+	"github.com/crashappsec/chalkular/internal/reports"
+	"github.com/crashappsec/chalkular/internal/reports/listeners/httpserver"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -67,9 +66,9 @@ func main() {
 
 	// custom arguments
 	var clusterDownloaderName string
-	var artifactsHTTPAddr string
-	var artifactsHTTPCertPath, artifactsHTTPCertName, artifactsHTTPCertKey string
-	var secureArtifactsHTTP bool
+	var reportHTTPAddr string
+	var reportHTTPCertPath, reportHTTPCertName, reportHTTPCertKey string
+	var secureReportHTTP bool
 	var sqsQueueURL string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -90,20 +89,20 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
 	// custom flags
-	flag.StringVar(&clusterDownloaderName, "cluster-downloader-name", "chalkular-artifacts",
+	flag.StringVar(&clusterDownloaderName, "cluster-downloader-name", "chalkular-report",
 		"The name of the cluster downloader to use as the default when no downloader is referenced")
-	flag.StringVar(&artifactsHTTPAddr, "artifacts-http-bind-address", "0",
-		"The address the artifacts web server binds to. Use :7443 for HTTPS or :7070 for HTTP, "+
+	flag.StringVar(&reportHTTPAddr, "report-http-bind-address", "0",
+		"The address the report web server binds to. Use :7443 for HTTPS or :7070 for HTTP, "+
 			"or leave as 0 to disable the service.")
-	flag.BoolVar(&secureArtifactsHTTP, "artifacts-http-secure", true,
-		"If set, the artifacts HTTP endpoint is served securely via HTTPS."+
-			"Use --artifacts-http-secure=false to use HTTP instead.")
-	flag.StringVar(&artifactsHTTPCertPath, "artifacts-http-cert-path", "",
-		"The directory that contains the artifacts server certificate.")
-	flag.StringVar(&artifactsHTTPCertName, "artifacts-http-cert-name", "tls.crt",
-		"The name of the artifacts HTTP server certificate file.")
-	flag.StringVar(&artifactsHTTPCertKey, "artifacts-http-cert-key", "tls.key",
-		"The name of the artifacts HTTP server key file.")
+	flag.BoolVar(&secureReportHTTP, "report-http-secure", true,
+		"If set, the report HTTP endpoint is served securely via HTTPS."+
+			"Use --report-http-secure=false to use HTTP instead.")
+	flag.StringVar(&reportHTTPCertPath, "report-http-cert-path", "",
+		"The directory that contains the report server certificate.")
+	flag.StringVar(&reportHTTPCertName, "report-http-cert-name", "tls.crt",
+		"The name of the report HTTP server certificate file.")
+	flag.StringVar(&reportHTTPCertKey, "report-http-cert-key", "tls.key",
+		"The name of the report HTTP server key file.")
 	flag.StringVar(&sqsQueueURL, "sqs-queue-url", "",
 		"The URL of the SQS queue to listen for new messages on. Omit this flag to disable SQS lisenting")
 	opts := zap.Options{}
@@ -198,74 +197,81 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	// ctx := context.Background()
 
-	scheduler, err := artifacts.NewScheduler(mgr.GetClient(), cfg)
+	policyCompiler, err := policy.NewCompiler(1024)
 	if err != nil {
-		setupLog.Error(err, "unable to construct pipeline client")
+		setupLog.Error(err, "unable to construct policy compiler")
+		os.Exit(1)
+	}
+
+	scheduler, err := reports.NewScheduler(mgr.GetClient(), cfg, policyCompiler)
+	if err != nil {
+		setupLog.Error(err, "unable to construct report scheduler")
 		os.Exit(1)
 	}
 	schedulerClient := scheduler.GetClient()
 
 	if err = mgr.Add(scheduler); err != nil {
-		setupLog.Error(err, "unable to register artifacts scheduler")
+		setupLog.Error(err, "unable to register report scheduler")
 		os.Exit(1)
 	}
 
-	artifactsHTTPServerOptions := httpserver.Options{
-		BindAddress: artifactsHTTPAddr,
+	reportHTTPServerOptions := httpserver.Options{
+		BindAddress: reportHTTPAddr,
 		TlSOpts:     tlsOpts,
-		Secure:      secureArtifactsHTTP,
+		Secure:      secureReportHTTP,
 	}
 
-	if len(artifactsHTTPCertPath) > 0 {
+	if len(reportHTTPCertPath) > 0 {
 		setupLog.Info("Initializing listener certificate watcher using provided certificates",
-			"artifacts-http-cert-path", artifactsHTTPCertPath,
-			"artifacts-http-cert-name", artifactsHTTPCertName,
-			"artifacts-http-cert-key", artifactsHTTPCertKey)
+			"artifac-http-cert-path", reportHTTPCertPath,
+			"report-http-cert-name", reportHTTPCertName,
+			"report-http-cert-key", reportHTTPCertKey)
 
-		artifactsHTTPServerOptions.CertDir = artifactsHTTPCertPath
-		artifactsHTTPServerOptions.CertName = artifactsHTTPCertName
-		artifactsHTTPServerOptions.KeyName = artifactsHTTPCertKey
+		reportHTTPServerOptions.CertDir = reportHTTPCertPath
+		reportHTTPServerOptions.CertName = reportHTTPCertName
+		reportHTTPServerOptions.KeyName = reportHTTPCertKey
 	}
 
-	artifactsHTTPServer, err := httpserver.NewServer(cfg, mgr.GetHTTPClient(), schedulerClient, artifactsHTTPServerOptions)
+	reportHTTPServer, err := httpserver.NewServer(cfg, mgr.GetHTTPClient(), schedulerClient, reportHTTPServerOptions)
 	if err != nil {
-		setupLog.Error(err, "unable to construct artifacts HTTP server")
+		setupLog.Error(err, "unable to construct report HTTP server")
 		os.Exit(1)
 	}
 
-	if artifactsHTTPAddr != "0" {
-		if err = mgr.Add(artifactsHTTPServer); err != nil {
-			setupLog.Error(err, "unable to register artifacts HTTP server")
+	if reportHTTPAddr != "0" {
+		if err = mgr.Add(reportHTTPServer); err != nil {
+			setupLog.Error(err, "unable to register report HTTP server")
 			os.Exit(1)
 		}
 	}
 
-	if sqsQueueURL != "" {
-		artifactsSQSListener, err := sqs.NewListener(ctx, *schedulerClient, sqsQueueURL)
-		if err != nil {
-			setupLog.Error(err, "unable to construct SQS listener")
-			os.Exit(1)
-		}
+	// if sqsQueueURL != "" {
+	// 	reportSQSListener, err := sqs.NewListener(ctx, *schedulerClient, sqsQueueURL)
+	// 	if err != nil {
+	// 		setupLog.Error(err, "unable to construct SQS listener")
+	// 		os.Exit(1)
+	// 	}
 
-		if err = mgr.Add(artifactsSQSListener); err != nil {
-			setupLog.Error(err, "unable to register SQS listener")
-			os.Exit(1)
-		}
-	}
+	// 	if err = mgr.Add(reportSQSListener); err != nil {
+	// 		setupLog.Error(err, "unable to register SQS listener")
+	// 		os.Exit(1)
+	// 	}
+	// }
 
-	if err := (&controller.MediaTypePolicyReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+	if err := (&controller.ChalkReportPolicyReconciler{
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		PolicyCompiler: policyCompiler,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "MediaTypePolicy")
+		setupLog.Error(err, "unable to create controller", "controller", "ChalkReportPolicy")
 		os.Exit(1)
 	}
 	// nolint:goconst
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err := webhookv1beta1.SetupMediaTypePolicyWebhookWithManager(mgr, clusterDownloaderName); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "MediaTypePolicy")
+		if err := webhookv1beta1.SetupChalkReportPolicyWebhookWithManager(mgr, clusterDownloaderName); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "ChalkReportPolicy")
 			os.Exit(1)
 		}
 	}
