@@ -13,11 +13,14 @@ import (
 	"flag"
 	"os"
 
+	ecr "github.com/awslabs/amazon-ecr-credential-helper/ecr-login"
 	"github.com/crashappsec/chalkular/internal/downloaders"
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/authn/k8schain"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/google"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -56,8 +59,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	// key chain order:
+	// 1. use k8schain (if successfully built)
+	// 2. IRSA/EKS metadata endpoint
+	// 3. GKE metadata endpoint
+	// 4. default (i.e. DOCKER_CONFIG)
+	var keychains []authn.Keychain
+	if k8sKeychain, err := k8schain.NewInCluster(ctx, k8schain.Options{}); err != nil {
+		l.Error(err, "failed to build k8s auth keychain, skipping")
+	} else {
+		keychains = append(keychains, k8sKeychain)
+	}
+
+	keychains = append(keychains,
+		authn.NewKeychainFromHelper(ecr.NewECRHelper()),
+		google.Keychain,
+		authn.DefaultKeychain,
+	)
 	remoteOpts := []remote.Option{
-		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+		remote.WithAuthFromKeychain(authn.NewMultiKeychain(keychains...)),
 	}
 
 	if platform != "" {

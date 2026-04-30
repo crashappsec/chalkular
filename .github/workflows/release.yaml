@@ -15,8 +15,6 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: 1.25
-
   SUFFIX: ${{ github.event.release.prerelease && '-prerelease' || '' }}
   RELEASE_NAME: ${{ github.event.release.name }}
 
@@ -47,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image: [ controller, downloader ]
+        image: [controller, downloader, uploader]
     permissions:
       packages: write
       contents: read

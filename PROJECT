@@ -7,6 +7,7 @@ domain: chalk.ocular.crashoverride.run
 layout:
 - go.kubebuilder.io/v4
 plugins:
+  helm.chalk.ocular.crashoverride.run/v1-alpha: null
   helm.kubebuilder.io/v2-alpha:
     manifests: dist/install.yaml
     output: dist

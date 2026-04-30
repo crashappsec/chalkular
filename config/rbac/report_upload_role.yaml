@@ -4,7 +4,7 @@ metadata:
   name: report-uploader
 rules:
 - nonResourceURLs:
-  - "/api/v1beta1/chalk/report"
+  - "/api/v1beta1/report"
   verbs:
   - post
 

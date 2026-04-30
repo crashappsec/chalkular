@@ -65,7 +65,7 @@ func NewServer(config *rest.Config, httpClient *http.Client, client *reports.Sch
 
 	apiV1beta1 := engine.Group("/api/v1beta1", authorizationMiddleware(authN, authZ))
 	{
-		apiV1beta1.POST("/chalk/report", scheduleReport(s.schedulerClient))
+		apiV1beta1.POST("/report", scheduleReport(s.schedulerClient))
 	}
 
 	s.engine = engine

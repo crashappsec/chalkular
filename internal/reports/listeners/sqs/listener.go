@@ -94,7 +94,7 @@ func (l *Listener) Start(ctx context.Context) error {
 				}
 
 				logger.Info("retrieving chalk report from API", "actionID", actionID)
-				// TODO(bthuilot): get chalk report from API
+				// TODO(bthuilot): get chalk report from API or S3
 				report := make(reports.ChalkReport)
 
 				result := l.scheduler.NewReport(ctx, report)

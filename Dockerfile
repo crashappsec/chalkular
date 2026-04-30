@@ -6,8 +6,8 @@
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 ARG BUILDPLATFORM
-
 FROM  --platform=${BUILDPLATFORM} golang:1.26@sha256:595c7847cff97c9a9e76f015083c481d26078f961c9c8dca3923132f51fe12f1 AS builder
+
 ARG TARGETOS
 ARG TARGETARCH
 ARG LDFLAGS="-w -s"

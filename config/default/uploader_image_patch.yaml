@@ -1,0 +1,3 @@
+- op: replace
+  path: /spec/container/image
+  value: ghcr.io/crashappsec/chalkular-uploader:latest

@@ -6,8 +6,9 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-// Package Chalkular is a package to provide the integration between the Ocular application,
-// and the chalk tool
+// Package chalkular is a package to provide the integration between the
+// Ocular application and the chalk tool
 // It is designed to allow chalk the ability to trigger Ocular scans for artifacts
-// that it builds
+// that it builds by receiving a chalk report and allowing the user to specify
+// a template for Ocular pipelines that should be created for each chalk mark
 package chalkular

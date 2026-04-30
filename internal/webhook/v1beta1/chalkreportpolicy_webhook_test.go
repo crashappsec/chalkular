@@ -45,7 +45,7 @@ var _ = Describe("ChalkReportPolicy Webhook", func() {
 	Context("When creating ChalkReportPolicy under Defaulting Webhook", func() {
 		It("Should apply defaults when a required field is empty", func() {
 			By("not setting the downloader ref for the pipeline template")
-			obj.Spec.PipelineTemplate.Spec.DownloaderRef = ocularv1beta1.ParameterizedObjectReference{}
+			obj.Spec.PipelineTemplate.Spec.DownloaderRef = ocularv1beta1.ParameterizedLocalObjectReference{}
 			By("calling the Default method to apply defaults")
 			Expect(defaulter.Default(ctx, obj)).ToNot(HaveOccurred())
 			By("checking the cluster downloader is set")

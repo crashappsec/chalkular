@@ -27,6 +27,12 @@ export CHALKULAR_DOWNLOADER_REPOSITORY
 CHALKULAR_DOWNLOADER_IMG ?= $(CHALKULAR_DOWNLOADER_REPOSITORY):$(CHALKULAR_VERSION)
 export CHALKULAR_DOWNLOADER_IMG
 
+CHALKULAR_UPLOADER_REPOSITORY ?= ghcr.io/crashappsec/chalkular-uploader
+export CHALKULAR_UPLOADER_REPOSITORY
+CHALKULAR_UPLOADER_IMG ?= $(CHALKULAR_UPLOADER_REPOSITORY):$(CHALKULAR_VERSION)
+export CHALKULAR_UPLOADER_IMG
+
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -143,6 +149,12 @@ lint-fix: golangci-lint license-eye ## Run golangci-lint linter and perform fixe
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	$(GOLANGCI_LINT) config verify
 
+GHASOURCEDIR := ./.github/workflows
+GHASOURCES := $(shell find $(GHASOURCEDIR) -name '*.yaml')
+.PHONY: gha-upgrade
+gha-upgrade: ratchet ## upgrades all pinned github actions used in any workflows
+	@"$(RATCHET)" upgrade $(GHASOURCES)
+
 ##@ Build
 
 .PHONY: build
@@ -163,16 +175,19 @@ PLATFORMS ?= linux/arm64,linux/amd64
 DOCKER_ARGS ?= --platform=$(PLATFORMS)
 
 .PHONY: docker-build-all
-docker-build-all: docker-build-controller docker-build-downloader ## Build docker image with the manager.
+docker-build-all: docker-build-controller docker-build-downloader docker-build-uploader ## Build all docker images
 
 .PHONY: docker-build-controller
-docker-build-controller:  docker-build-img-controller ## Build docker image with the manager.
+docker-build-controller:  docker-build-img-controller ## Build docker image for the controller.
 
 .PHONY: docker-build-downloader
-docker-build-downloader: docker-build-img-downloader ## Build docker image with the extractor.
+docker-build-downloader: docker-build-img-downloader ## Build docker image for the downloader.
+
+.PHONY: docker-build-uploader
+docker-build-uploader: docker-build-img-uploader ## Build docker image for the uploader
 
 docker-build-img-%:
-	$(CONTAINER_TOOL) build \
+	@$(CONTAINER_TOOL) build \
 		--build-arg LDFLAGS="$(LDFLAGS)" \
 		--build-arg COMMAND=$* \
 		-t $(CHALKULAR_$(shell echo '$*' | tr '[:lower:]' '[:upper:]')_IMG) \
@@ -180,13 +195,16 @@ docker-build-img-%:
 		-f Dockerfile .
 
 .PHONY: docker-push-all
-docker-push-all: docker-push-controller docker-push-downloader ## Push docker both manager and extractor images.
+docker-push-all: docker-push-controller docker-push-uploader docker-push-downloader ## Push all docker images
 
 .PHONY: docker-push-controller
-docker-push-controller: docker-push-img-controller ## Push docker image with the manager.
+docker-push-controller: docker-push-img-controller ## Push docker image for the controller
 
 .PHONY: docker-push-downloader
-docker-push-extractor: docker-push-img-downloader ## Push docker image with the extractor.
+docker-push-downloader: docker-push-img-downloader ## Push docker image for the downloader.
+
+.PHONY: docker-push-uploader
+docker-push-uploader: docker-push-img-uploader ## Push docker image for the uploader.
 
 docker-push-img-%: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push $(CHALKULAR_$(shell echo '$*' | tr '[:lower:]' '[:upper:]')_IMG)
@@ -194,45 +212,28 @@ docker-push-img-%: ## Push docker image with the manager.
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 
 
-# The build-helm chart is a bit hacky right now since kubebuilder doesn't support
-# adding really any customizations to the 'helm/v2-alpha' plugin. So we do some
-# sed/yq magic to get the values we want into the chart after we generate it from
-# the 'config' kustomization.
-# Steps to build helm are:
-# 1. Ensure the helm chart is copied over from the repo 'crashappsec/helm-charts' to 'dist/chart'
-#    The helm chart is stored there to allow for versioning and easier updates.
-# 2. We use 'kubebuilder edit --plugins=helm/v2-alpha' to update the helm chart as a result
-#    of the 'config' kustomization. This will overwrite the existing resources in 'dist/chart'
-# 3. We then use yq/sed to update the values.yaml and Chart.yaml with any customizations we want
-#    to ensure they weren't lost during the 'kubebuilder edit' step.
-# 4. [TO DISTRIBUTE] we then copy the chart to the 'crashappsec/helm-charts' repo for distribution.
-# NOTE: this target only performs steps 2 and 3. Step 1 is a manual step that must be
-#       performed by the developer to ensure the chart is up-to-date before running
-#       this target. Step 4 is also a manual step to push the updated chart to
-#       the 'crashappsec/helm-charts' repo for distribution.
+
+CHALKULAR_HELM_VERSION ?= 0.0.0-dev
+export CHALKULAR_HELM_VERSION
+# Since chalkular has additional chart variables that are not covered by
+# 'helm.kubebuilder.io/v2-alpha', A custom kubebuilder plugin is used to template
+# files after they are generated by the helm plugin. We then set some default values
+# using YQ since it preseves comments, unlike Go's YAML parser. 
 .PHONY: build-helm
-build-helm: kubebuilder yq ## Generate a helm-chart using kubebuilder
+build-helm: kubebuilder helmpatch-plugin yq ## Generate a helm-chart using kubebuilder
 	@mkdir -p dist
-	@"$(KUBEBUILDER)" edit --plugins=helm/v2-alpha
-	@# update manfiests with any templating or customizations TODO(bryce): have this be one script
-	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.manager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)annotations:/\1annotations:\n\1    {{- range $$key, $$val := .Values.manager.annotations }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)env: \[\]/\1env:\n\1  {{- with .Values.manager.env }}\n\1  {{- toYaml . | nindent 20 }}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.manager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.manager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+image: ).+$$/\1 "{{ .Values.downloader.image.repository }}:{{ .Values.downloader.image.tag }}"/g' dist/chart/templates/extras/artifacts.yaml
-	@sed -i.bak -r 's/^([ ]+imagePullPolicy:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.downloader.image.pullPolicy }}"/g' dist/chart/templates/extras/artifacts.yaml
-	@sed -i.bak -r 's/^([ ]+)(- args:)/\1\2\n\1    {{- if .Values.intake.sqs.enable}}\n\1    - --sqs-queue-url={{ .Values.intake.sqs.queue_url }}\n\1    {{- end }}/' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)(- args:)/\1\2\n\1    {{- if .Values.intake.http.enable}}\n\1    - --artifacts-http-bind-address=:{{ .Values.intake.http.port }}\n\1    - --artifacts-http-secure={{ .Values.intake.http.secure }}\n\1    {{- end }}/' dist/chart/templates/manager/manager.yaml
-	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/extras/artifacts.yaml.bak # cleanup backup file from sed
+	@EXTERNAL_PLUGINS_PATH="$(LOCALBIN)" "$(KUBEBUILDER)" edit --plugins=helm.kubebuilder.io/v2-alpha,$(HELMPATCH_NAME)/$(HELMPATCH_VERSION)
 	@"$(YQ)" -ie '.manager.image = {"repository": strenv(CHALKULAR_CONTROLLER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' dist/chart/values.yaml
-	@"$(YQ)" -ie '.downloader.image =  {"repository": strenv(CHALKULAR_DOWNLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' dist/chart/values.yaml
-	@"$(YQ)" -ie '.appVersion = (strenv(CHALKULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
 	@"$(YQ)" -ie '.intake = {"http": {"enable": false, "port": 7070, "secure": true}, "sqs": {"enable": false, "queue_url": ""}}' dist/chart/values.yaml
+	@"$(YQ)" -ie '(.intake | key) head_comment="Configure intake methods for chalk reports"' dist/chart/values.yaml
+	@"$(YQ)" -ie '.downloader.image =  {"repository": strenv(CHALKULAR_DOWNLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' dist/chart/values.yaml
+	@"$(YQ)" -ie '(.downloader | key) head_comment="Configure downloader image"' dist/chart/values.yaml
+	@"$(YQ)" -ie '.uploader.image =  {"repository": strenv(CHALKULAR_UPLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' dist/chart/values.yaml
+	@"$(YQ)" -ie '(.uploader | key) head_comment="Configure uploader image"' dist/chart/values.yaml
+	@"$(YQ)" -ie '.appVersion = (strenv(CHALKULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
 
 
 .PHONY: clean-helm
@@ -305,22 +306,29 @@ YQ ?= $(LOCALBIN)/yq
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 CLIENT_GEN ?= $(LOCALBIN)/client-gen
 LICENSE_EYE ?= $(LOCALBIN)/license-eye
-FRIZBEEE ?= $(LOCALBIN)/frizbee
 KUBEBUILDER ?= $(LOCALBIN)/kubebuilder
+RATCHET ?= $(LOCALBIN)/ratchet
+# https://book.kubebuilder.io/plugins/extending/external-plugins.html#how-to-use-an-external-plugin
+HELMPATCH_NAME=helm.chalk.ocular.crashoverride.run
+HELMPATCH_VERSION=v1-alpha
+HELMPATCH_DIR ?= $(LOCALBIN)/$(HELMPATCH_NAME)/$(HELMPATCH_VERSION)
+HELMPATCH_PLUGIN ?= $(HELMPATCH_DIR)/$(HELMPATCH_NAME)
+HELMPATCH_SOURCES ?= $(wildcard hack/kubebuilder-helm-patch/*.go)
+
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.7.1
-CONTROLLER_TOOLS_VERSION ?= v0.20.0
+KUSTOMIZE_VERSION ?= v5.8.1
+CONTROLLER_TOOLS_VERSION ?= v0.20.1
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-GOLANGCI_LINT_VERSION ?= v2.8.0
-YQ_VERSION ?= v4.47.1
-CODE_GENERATOR_VERSION ?= v0.35.0
+GOLANGCI_LINT_VERSION ?= v2.11.4
+YQ_VERSION ?= v4.53.2
+CODE_GENERATOR_VERSION ?= v0.36.0
 LICENSE_EYE_VERSION ?= v0.8.0
-FRIZBEEE_VERSION ?=  v0.1.7
-KUBEBUILDER_VERSION ?= v4.11.1
+KUBEBUILDER_VERSION ?= v4.13.1
+RATCHET_VERSION ?= v0.11.4
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -350,26 +358,38 @@ golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
-
+.PHONY: yq
 yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
 	$(call go-install-tool,$(YQ),github.com/mikefarah/yq/v4,$(YQ_VERSION))
 
+.PHONY: client-gen
 client-gen: $(CLIENT_GEN) ## Download code-generator locally if necessary.
 $(CLIENT_GEN): $(LOCALBIN)
 	$(call go-install-tool,$(CLIENT_GEN),k8s.io/code-generator/cmd/client-gen,$(CODE_GENERATOR_VERSION))
 
+.PHONY: license-eye
 license-eye: $(LICENSE_EYE) ## Download skywalking-eyes locally if necessary.
 $(LICENSE_EYE): $(LOCALBIN)
 	$(call go-install-tool,$(LICENSE_EYE),github.com/apache/skywalking-eyes/cmd/license-eye,$(LICENSE_EYE_VERSION))
 
-frizbee: $(FRIZBEEE) ## Download frizbee locally if necessary.
-$(FRIZBEEE): $(LOCALBIN)
-	$(call go-install-tool,$(FRIZBEEE),github.com/stacklok/frizbee,$(FRIZBEEE_VERSION))
-
+.PHONY: kubebuilder
 kubebuilder: $(KUBEBUILDER) ## Download kubebuilder locally if necessary.
 $(KUBEBUILDER): $(LOCALBIN)
 	$(call go-install-tool,$(KUBEBUILDER),sigs.k8s.io/kubebuilder/v4,$(KUBEBUILDER_VERSION))
+
+.PHONY: ratchet
+ratchet: $(RATCHET) ## Download ratchet locally if necessary.
+$(RATCHET): $(LOCALBIN)
+	$(call go-install-tool,$(RATCHET),github.com/sethvargo/ratchet,$(RATCHET_VERSION))
+
+
+.PHONY: helmpatch-plugin
+helmpatch-plugin: $(HELMPATCH_PLUGIN)
+$(HELMPATCH_PLUGIN): $(LOCALBIN) $(HELMPATCH_SOURCES)
+	@mkdir -p $(HELMPATCH_DIR)
+	@echo "Compiling kubebuilder helm patch plugin"
+	@cd hack/kubebuilder-helm-patch && go build -o $(HELMPATCH_PLUGIN)
 
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
@@ -387,3 +407,53 @@ mv $(1) $(1)-$(3) ;\
 } ;\
 ln -sf $$(realpath $(1)-$(3)) $(1)
 endef
+
+
+## Helm binary to use for deploying the chart
+HELM ?= helm
+## Namespace to deploy the Helm release
+HELM_NAMESPACE ?= chalkular-system
+## Name of the Helm release
+HELM_RELEASE ?= chalkular
+## Path to the Helm chart directory
+HELM_CHART_DIR ?= dist/chart
+## Additional arguments to pass to helm commands
+HELM_EXTRA_ARGS ?=
+
+.PHONY: install-helm
+install-helm: ## Install the latest version of Helm.
+	@command -v $(HELM) >/dev/null 2>&1 || { \
+		echo "Installing Helm..." && \
+		curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash; \
+	}
+
+.PHONY: helm-deploy
+helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify an image with IMG.
+	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
+		--namespace $(HELM_NAMESPACE) \
+		--create-namespace \
+		--set manager.image.repository=$${CHALKULAR_CONTROLLER_IMG%:*} \
+		--set manager.image.tag=$${CHALKULAR_CONTROLLER_IMG##*:} \
+		--set downloader.image.repository=$${CHALKULAR_DOWNLOADER_IMG%:*} \
+		--set downloader.image.tag=$${CHALKULAR_DOWNLOADER_IMG##*:} \
+		--set uploader.image.repository=$${CHALKULAR_UPLOADER_IMG%:*} \
+		--set uploader.image.tag=$${CHALKULAR_UPLOADER_IMG##*:} \
+		--wait \
+		--timeout 5m \
+		$(HELM_EXTRA_ARGS)
+
+.PHONY: helm-uninstall
+helm-uninstall: ## Uninstall the Helm release from the K8s cluster.
+	$(HELM) uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-status
+helm-status: ## Show Helm release status.
+	$(HELM) status $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-history
+helm-history: ## Show Helm release history.
+	$(HELM) history $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-rollback
+helm-rollback: ## Rollback to previous Helm release.
+	$(HELM) rollback $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)

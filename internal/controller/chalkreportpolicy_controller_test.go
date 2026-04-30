@@ -76,15 +76,11 @@ var _ = Describe("ChalkReportPolicy Controller", Ordered, func() {
 							// 	},
 							// },
 							Spec: ocularv1beta1.PipelineSpec{
-								ProfileRef: ocularv1beta1.ParameterizedObjectReference{
-									ObjectReference: v1.ObjectReference{
-										Name: profileName,
-									},
+								ProfileRef: ocularv1beta1.ParameterizedLocalObjectReference{
+									Name: profileName,
 								},
-								DownloaderRef: ocularv1beta1.ParameterizedObjectReference{
-									ObjectReference: v1.ObjectReference{
-										Name: downloaderName,
-									},
+								DownloaderRef: ocularv1beta1.ParameterizedLocalObjectReference{
+									Name: downloaderName,
 								},
 							},
 						},
