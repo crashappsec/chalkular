@@ -70,6 +70,17 @@ jobs:
             --wait \
             --timeout 300s
 
+      - name: Install ocular via Helm (wait for readiness)
+        run: |
+          helm repo add crashoverride https://crashappsec.github.io/helm-charts
+          helm repo update
+          helm install ocular crashoverride/ocular \
+            --namespace ocular-system \
+            --create-namespace \
+            --set crds.enablde=true \
+            --wait \
+            --timeout 300s
+
         # TODO: Uncomment if Prometheus is enabled
         #      - name: Install Prometheus Operator CRDs
         #        run: |
