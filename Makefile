@@ -134,7 +134,6 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
-
 .PHONY: lint
 lint: golangci-lint license-eye ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run
