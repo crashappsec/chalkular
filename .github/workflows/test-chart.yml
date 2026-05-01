@@ -11,6 +11,7 @@ env:
   CHALKULAR_CONTROLLER_IMG: chalkular-controller:ci
   CHALKULAR_DOWNLOADER_IMG: chalkular-downloader:ci
   CHALKULAR_UPLOADER_IMG: chalkular-uploader:ci
+  DOCKER_ARGS:
 
 jobs:
   test-e2e:
