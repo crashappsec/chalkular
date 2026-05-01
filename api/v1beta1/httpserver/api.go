@@ -21,3 +21,8 @@ type APIResponse[T any] struct {
 	Response T      `json:"response,omitempty,omitzero" yaml:"response,omitempty,omitzero"`
 	Message  string `json:"message,omitempty,omitzero" yaml:"message,omitempty,omitzero"`
 }
+
+type ReportResults struct {
+	Success []string
+	Failed  []string
+}

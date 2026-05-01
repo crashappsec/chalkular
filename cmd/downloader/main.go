@@ -12,12 +12,15 @@ import (
 	"context"
 	"flag"
 	"os"
-	"regexp"
 
-	"github.com/crashappsec/chalkular/internal/artifacts/downloaders"
+	ecr "github.com/awslabs/amazon-ecr-credential-helper/ecr-login"
+	"github.com/crashappsec/chalkular/internal/downloaders"
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/authn/k8schain"
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/google"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -30,9 +33,7 @@ var (
 )
 
 func main() {
-	opts := zap.Options{
-		Development: true,
-	}
+	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
@@ -42,26 +43,54 @@ func main() {
 
 	ctx := ctrl.LoggerInto(context.Background(), l)
 
-	imageRegistry := os.Getenv(v1beta1.EnvVarTargetIdentifier)
-	imageVersion := os.Getenv(v1beta1.EnvVarTargetVersion)
+	image := os.Getenv(v1beta1.EnvVarTargetIdentifier)
+	platform := os.Getenv(v1beta1.EnvVarTargetVersion)
 
-	l = l.WithValues("imageVersion", imageVersion, "imageRegistry", imageRegistry)
+	l = l.WithValues("image", image, "platform", platform)
 
-	image := imageRegistry + ":" + imageVersion
-	if matched, err := regexp.Match(`^sha256:[a-fA-F0-9]{64}$`, []byte(imageVersion)); err != nil {
-		l.Error(err, "failed to match image version, assuming tag",
-			"imageVersion", imageVersion, "imageRegistry", imageRegistry)
-	} else if matched {
-		image = imageRegistry + "@" + imageRegistry
+	var nameOpts []name.Option
+	if insecure := os.Getenv("OCULAR_PARAM_INSECURE_REGISTRY"); insecure != "" {
+		nameOpts = append(nameOpts, name.Insecure)
 	}
 
-	ref, err := name.ParseReference(image)
+	ref, err := name.ParseReference(image, nameOpts...)
 	if err != nil {
 		l.Error(err, "failed to parse image reference", "image", image)
 		os.Exit(1)
 	}
 
-	img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+	// key chain order:
+	// 1. use k8schain (if successfully built)
+	// 2. IRSA/EKS metadata endpoint
+	// 3. GKE metadata endpoint
+	// 4. default (i.e. DOCKER_CONFIG)
+	var keychains []authn.Keychain
+	if k8sKeychain, err := k8schain.NewInCluster(ctx, k8schain.Options{}); err != nil {
+		l.Error(err, "failed to build k8s auth keychain, skipping")
+	} else {
+		keychains = append(keychains, k8sKeychain)
+	}
+
+	keychains = append(keychains,
+		authn.NewKeychainFromHelper(ecr.NewECRHelper()),
+		google.Keychain,
+		authn.DefaultKeychain,
+	)
+	remoteOpts := []remote.Option{
+		remote.WithAuthFromKeychain(authn.NewMultiKeychain(keychains...)),
+	}
+
+	if platform != "" {
+		p, err := v1.ParsePlatform(platform)
+		if err != nil {
+			l.Info("failed to parse platform, skipping", "platform", platform)
+		} else {
+			l = l.WithValues("platform", p.String())
+			remoteOpts = append(remoteOpts, remote.WithPlatform(*p))
+		}
+	}
+
+	img, err := remote.Image(ref, remoteOpts...)
 	if err != nil {
 		l.Error(err, "unable to retieve image info", "image", image)
 		os.Exit(1)

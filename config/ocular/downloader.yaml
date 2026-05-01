@@ -1,9 +1,21 @@
 apiVersion: ocular.crashoverride.run/v1beta1
 kind: ClusterDownloader
 metadata:
-  name: artifacts
+  name: chalkmark-extract
 spec:
   container:
-    name: artifact-extract
+    name: chalkmark-extract
     image: chalkular-downloader:latest
     imagePullPolicy: IfNotPresent
+    env: []
+    volumeMounts: []
+  metadataFiles:
+    - chalk.json
+  parameters:
+    - name: PLATFORM
+      default: ""
+      description: "Which platform to download for the image"
+    - name: INSECURE_REGISTRY
+      default: ""
+      description: "If set to a non-empty value, registry connection uses http"
+  volumes: []

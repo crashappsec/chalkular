@@ -22,6 +22,8 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the chalkular itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
-- mediatypepolicy_admin_role.yaml
-- mediatypepolicy_editor_role.yaml
-- mediatypepolicy_viewer_role.yaml
+- chalkreportpolicy_admin_role.yaml
+- chalkreportpolicy_editor_role.yaml
+- chalkreportpolicy_viewer_role.yaml
+# Custom role for uploading reports to HTTP server
+- report_upload_role.yaml

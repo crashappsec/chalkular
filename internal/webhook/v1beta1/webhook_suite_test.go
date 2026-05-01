@@ -105,7 +105,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	err = SetupMediaTypePolicyWebhookWithManager(mgr, testClusterDownloader)
+	err = SetupChalkReportPolicyWebhookWithManager(mgr, testClusterDownloader)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:webhook
