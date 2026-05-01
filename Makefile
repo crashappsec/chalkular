@@ -150,7 +150,7 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	$(GOLANGCI_LINT) config verify
 
 GHASOURCEDIR := ./.github/workflows
-GHASOURCES := $(shell find $(GHASOURCEDIR) -name '*.yaml')
+GHASOURCES := $(shell find $(GHASOURCEDIR) -name '*.yaml' -or -name '*.yml')
 .PHONY: gha-upgrade
 gha-upgrade: ratchet ## upgrades all pinned github actions used in any workflows
 	@"$(RATCHET)" upgrade $(GHASOURCES)

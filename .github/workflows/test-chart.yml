@@ -1,7 +1,11 @@
 name: Test Chart
 
 on:
-  push: ['main']
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
 
 env:
   CHALKULAR_CONTROLLER_IMG: chalkular-controller:ci
@@ -14,10 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # ratchet:actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -65,12 +69,12 @@ jobs:
             --wait \
             --timeout 300s
 
-# TODO: Uncomment if Prometheus is enabled
-#      - name: Install Prometheus Operator CRDs
-#        run: |
-#          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-#          helm repo update
-#          helm install prometheus-crds prometheus-community/prometheus-operator-crds
+        # TODO: Uncomment if Prometheus is enabled
+        #      - name: Install Prometheus Operator CRDs
+        #        run: |
+        #          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        #          helm repo update
+        #          helm install prometheus-crds prometheus-community/prometheus-operator-crds
 
       - name: Install Helm chart for project
         run: |
