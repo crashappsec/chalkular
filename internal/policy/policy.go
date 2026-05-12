@@ -43,21 +43,21 @@ func (c CompiledPolicy) Matches(report, chalkmark map[string]any) (bool, error) 
 	return matched, nil
 }
 
-func (c CompiledPolicy) ExtractTarget(report, chalkmark map[string]any) (v1beta1.Target, error) {
+func (c CompiledPolicy) ExtractTargets(report, chalkmark map[string]any) ([]v1beta1.Target, error) {
 	activation := map[string]any{
 		"chalkmark": chalkmark,
 		"report":    report,
 	}
 	target, err := evalProgramToStringMap(c.Target, activation)
 	if err != nil {
-		return v1beta1.Target{}, err
+		return nil, err
 	}
 
 	identifier, exist := target["identifier"]
 	if !exist {
-		return v1beta1.Target{}, fmt.Errorf("missing identifier for target CEL expression")
+		return nil, fmt.Errorf("missing identifier for target CEL expression")
 	}
-	return v1beta1.Target{Identifier: identifier, Version: target["version"]}, nil
+	return []v1beta1.Target{{Identifier: identifier, Version: target["version"]}}, nil
 
 }
 

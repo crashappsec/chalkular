@@ -45,15 +45,15 @@ var _ = Describe("Policy With no  Test", Ordered, func() {
 		})
 		It("target expression should successfully evalute to a v1beta1.Target", func() {
 			By("the CEL target expression returning a target with an identifier")
-			target, err := policy.ExtractTarget(map[string]any{}, map[string]any{
+			target, err := policy.ExtractTargets(map[string]any{}, map[string]any{
 				"_OCULAR_TEST_IDENTIFIER": "testing-identifier",
 				"_OCULAR_TEST_VERSION":    "testing-version",
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(target).To(BeEquivalentTo(v1beta1.Target{
+			Expect(target).To(BeEquivalentTo([]v1beta1.Target{{
 				Identifier: "testing-identifier",
 				Version:    "testing-version",
-			}))
+			}}))
 		})
 		It("should return nothing for downloader/profile params when not set", func() {
 			By("attempting to extract parameters via policy")

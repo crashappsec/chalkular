@@ -26,11 +26,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type ChalkReport = map[string]any
-type ChalkMark = map[string]any
-
 type event struct {
-	Report ChalkReport
+	Report chalk.Report
 	Result SchedulerResult
 }
 
@@ -119,7 +116,7 @@ func (s *Scheduler) createPipelinesForChalkmarks(ctx context.Context, actionID s
 	return merr.ErrorOrNil()
 }
 
-func extractChalksFromReport(ctx context.Context, actionID string, report ChalkReport) ([]ChalkMark, error) {
+func extractChalksFromReport(ctx context.Context, actionID string, report chalk.Report) ([]chalk.Mark, error) {
 	l := logf.FromContext(ctx).WithValues("actionID", actionID)
 	chalksJSON, exist := report[chalk.KeyChalks]
 	if !exist {
@@ -130,9 +127,9 @@ func extractChalksFromReport(ctx context.Context, actionID string, report ChalkR
 		return nil, fmt.Errorf("invalid type for '_CHALKS' key, expected list %T", chalksJSON)
 	}
 
-	var chalks []ChalkMark
+	var chalks []chalk.Mark
 	for _, c := range chalksList {
-		chalkmark, valid := c.(ChalkMark)
+		chalkmark, valid := c.(chalk.Mark)
 		if !valid {
 			l.Info("invalid type for chalk mark, skipping", "chalkmark-type", fmt.Sprintf("%T", c))
 			continue
@@ -142,7 +139,7 @@ func extractChalksFromReport(ctx context.Context, actionID string, report ChalkR
 	return chalks, nil
 }
 
-func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID string, report ChalkReport, chalkmark ChalkMark) ([]*ocularv1beta1.Pipeline, error) {
+func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID string, report chalk.Report, chalkmark chalk.Mark) ([]*ocularv1beta1.Pipeline, error) {
 	l := logf.FromContext(ctx).WithValues("actionID", actionID)
 	var (
 		pipelines []*ocularv1beta1.Pipeline
@@ -170,12 +167,12 @@ func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID st
 			continue
 		}
 
-		programs, err := s.policyCompiler.Get(&reportPolicy)
+		p, err := s.policyCompiler.Get(&reportPolicy)
 		if err != nil {
 			policyLogger.Error(err, "unable to get compiled expressions for policy, skipping")
 			continue
 		}
-		matches, err := programs.Matches(report, chalkmark)
+		matches, err := p.Matches(report, chalkmark)
 		if err != nil {
 			policyLogger.Error(err, "failed to run match expresssion, skipping")
 			continue
@@ -185,14 +182,14 @@ func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID st
 			continue
 		}
 
-		target, err := programs.ExtractTarget(report, chalkmark)
+		targets, err := p.ExtractTargets(report, chalkmark)
 		if err != nil {
 			policyLogger.Error(err, "failed to evalutate policy target, skipping")
 			merr = multierror.Append(merr, err)
 			continue
 		}
 
-		profileParams, dlParams, err := programs.ExtractParameters(report, chalkmark)
+		profileParams, dlParams, err := p.ExtractParameters(report, chalkmark)
 		if err != nil {
 			policyLogger.Error(err, "failed to evalutate policy parameters, skipping")
 			merr = multierror.Append(merr, err)
@@ -212,11 +209,14 @@ func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID st
 		maps.Copy(pipeline.Annotations, pipelineTemplate.Annotations)
 		pipelineTemplate.Spec.DeepCopyInto(&pipeline.Spec)
 
-		pipeline.Spec.Target = target
 		pipeline.Spec.DownloaderRef.Parameters = append(pipeline.Spec.DownloaderRef.Parameters, dlParams...)
 		pipeline.Spec.ProfileRef.Parameters = append(pipeline.Spec.ProfileRef.Parameters, profileParams...)
+		for _, t := range targets {
+			p := pipeline.DeepCopy()
+			p.Spec.Target = t
+			pipelines = append(pipelines, p)
+		}
 
-		pipelines = append(pipelines, pipeline)
 	}
 
 	l.Info(fmt.Sprintf("generated %d pipelines for chalk mark", len(pipelines)), "pipelines", len(pipelines))
