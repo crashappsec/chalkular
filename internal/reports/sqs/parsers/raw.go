@@ -12,12 +12,12 @@ import (
 	"context"
 	"encoding/json"
 
-	sqsTypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
-	"github.com/crashappsec/chalkular/api/chalk"
+	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
+	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func RawReportParser(ctx context.Context, msg sqsTypes.Message) ([]chalk.Report, error) {
+func RawReportParser(ctx context.Context, msg sqstypes.Message) ([]chalk.Report, error) {
 	l := logf.FromContext(ctx)
 	l.Info("parsing report from message body")
 

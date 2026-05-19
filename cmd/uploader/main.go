@@ -10,7 +10,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -24,7 +23,6 @@ import (
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/hashicorp/go-multierror"
 	ctrl "sigs.k8s.io/controller-runtime"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -51,6 +49,7 @@ func main() {
 
 	bucketName := os.Getenv("OCULAR_PARAM_BUCKET")
 	region := os.Getenv("OCULAR_PARAM_REGION")
+	prefix := os.Getenv("OCULAR_PARAM_PREFIX")
 
 	var files []string
 	for i, arg := range os.Args {
@@ -70,19 +69,12 @@ func main() {
 	l = l.WithValues("result-files", resultFiles)
 	l.Info("parsed result files")
 
-	l.Info("parsing chalk metadata")
-	chalkmark, err := parseChalkmark(ctx, path.Join(os.Getenv(v1beta1.EnvVarMetadataDir), ChalkMetadataFile))
-	if err != nil {
-		l.Error(err, "failed to retrieve chalk mark")
-		os.Exit(1)
-	}
-
-	chalkIDJSON, exists := chalkmark["CHALK_ID"]
-	chalkID, ok := chalkIDJSON.(string)
-	if !exists || !ok {
-		l.Error(fmt.Errorf("invalid or missing chalkID, got %v", chalkIDJSON), "invalid chalk ID in chalk mark")
-		os.Exit(1)
-	}
+	// l.Info("parsing chalk metadata")
+	// chalkmark, err := parseChalkmark(ctx, path.Join(os.Getenv(v1beta1.EnvVarMetadataDir), ChalkMetadataFile))
+	// if err != nil {
+	// l.Error(err, "failed to retrieve chalk mark")
+	// os.Exit(1)
+	// }
 
 	cfg, err := utils.BuildAWSConfig(ctx, config.WithRegion(region))
 	if err != nil {
@@ -97,23 +89,23 @@ func main() {
 		if err != nil {
 			fileL.Error(err, "failed to open result file")
 			merr = multierror.Append(merr, fmt.Errorf("failed to open result file '%s': %w", file, err))
+			continue
 		}
 
-		key := fmt.Sprintf("chalkular/%s/%s", chalkID, path.Base(file))
+		key := fmt.Sprintf("%s/%s", filepath.Clean(prefix), path.Base(file))
 		fileL.Info("putting new object into bucket", "bucket", bucketName, "key", key)
 		_, err = s3Client.PutObject(ctx, &s3service.PutObjectInput{
 			Bucket: &bucketName,
 			Key:    &key,
 			Body:   f,
-			Metadata: map[string]string{
-				"CHALK_ID": chalkID,
-			},
 		})
 		if err != nil {
+			fileL.Error(err, "failed to upload S3 object")
 			merr = multierror.Append(merr, fmt.Errorf("failed to upload file %s: %w", file, err))
+			continue
 		}
 		if err = f.Close(); err != nil {
-			l.Error(err, "Failed to close file", "file", file)
+			fileL.Error(err, "Failed to close file", "file", file)
 		}
 	}
 
@@ -124,24 +116,24 @@ func main() {
 	l.Info("upload completed successfully")
 }
 
-func parseChalkmark(ctx context.Context, chalkpath string) (map[string]any, error) {
-	l := logf.FromContext(ctx)
-	chalkF, err := os.Open(chalkpath)
-	if err != nil {
-		l.Error(err, "failed to open chalk metadata file")
-		return nil, fmt.Errorf("failed to open chalk metadata: %w", err)
-	}
-	defer func() {
-		if err := chalkF.Close(); err != nil {
-			l.Error(err, "failed to close chalk file")
-		}
-	}()
+// func parseChalkmark(ctx context.Context, chalkpath string) (map[string]any, error) {
+// 	l := logf.FromContext(ctx)
+// 	chalkF, err := os.Open(chalkpath)
+// 	if err != nil {
+// 		l.Error(err, "failed to open chalk metadata file")
+// 		return nil, fmt.Errorf("failed to open chalk metadata: %w", err)
+// 	}
+// 	defer func() {
+// 		if err := chalkF.Close(); err != nil {
+// 			l.Error(err, "failed to close chalk file")
+// 		}
+// 	}()
 
-	chalkmark := make(map[string]any)
-	if err := json.NewDecoder(chalkF).Decode(&chalkmark); err != nil {
-		l.Error(err, "failed to decode chark mark JSON")
-		return nil, fmt.Errorf("unable to decode chalkmark: %w", err)
-	}
-	return chalkmark, nil
+// 	chalkmark := make(map[string]any)
+// 	if err := json.NewDecoder(chalkF).Decode(&chalkmark); err != nil {
+// 		l.Error(err, "failed to decode chark mark JSON")
+// 		return nil, fmt.Errorf("unable to decode chalkmark: %w", err)
+// 	}
+// 	return chalkmark, nil
 
-}
+// }

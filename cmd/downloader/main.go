@@ -12,6 +12,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"strings"
 
 	ecr "github.com/awslabs/amazon-ecr-credential-helper/ecr-login"
 	"github.com/crashappsec/chalkular/internal/downloaders"
@@ -43,19 +44,25 @@ func main() {
 
 	ctx := ctrl.LoggerInto(context.Background(), l)
 
-	image := os.Getenv(v1beta1.EnvVarTargetIdentifier)
-	platform := os.Getenv(v1beta1.EnvVarTargetVersion)
+	imageRepo := os.Getenv(v1beta1.EnvVarTargetIdentifier)
+	tag := os.Getenv(v1beta1.EnvVarTargetVersion)
 
-	l = l.WithValues("image", image, "platform", platform)
+	l = l.WithValues("image", imageRepo, "tag", tag)
+	l.Info("downloading image")
 
 	var nameOpts []name.Option
 	if insecure := os.Getenv("OCULAR_PARAM_INSECURE_REGISTRY"); insecure != "" {
 		nameOpts = append(nameOpts, name.Insecure)
 	}
 
-	ref, err := name.ParseReference(image, nameOpts...)
+	imageRef := imageRepo + ":" + tag
+	if strings.HasPrefix(tag, "@sha256:") {
+		imageRef = imageRepo + tag
+	}
+
+	ref, err := name.ParseReference(imageRef, nameOpts...)
 	if err != nil {
-		l.Error(err, "failed to parse image reference", "image", image)
+		l.Error(err, "failed to parse image reference", "image", imageRef)
 		os.Exit(1)
 	}
 
@@ -66,7 +73,7 @@ func main() {
 	// 4. default (i.e. DOCKER_CONFIG)
 	var keychains []authn.Keychain
 	if k8sKeychain, err := k8schain.NewInCluster(ctx, k8schain.Options{}); err != nil {
-		l.Error(err, "failed to build k8s auth keychain, skipping")
+		l.Info("failed to build k8s auth keychain, skipping", "error-message", err.Error())
 	} else {
 		keychains = append(keychains, k8sKeychain)
 	}
@@ -80,6 +87,7 @@ func main() {
 		remote.WithAuthFromKeychain(authn.NewMultiKeychain(keychains...)),
 	}
 
+	platform := os.Getenv("OCULAR_PARAM_PLATFORM")
 	if platform != "" {
 		p, err := v1.ParsePlatform(platform)
 		if err != nil {
@@ -92,13 +100,13 @@ func main() {
 
 	img, err := remote.Image(ref, remoteOpts...)
 	if err != nil {
-		l.Error(err, "unable to retieve image info", "image", image)
+		l.Error(err, "unable to retieve image info", "image", imageRef)
 		os.Exit(1)
 	}
 
 	mediaType, err := img.MediaType()
 	if err != nil {
-		l.Error(err, "unable to determine media type for image", "image", image)
+		l.Error(err, "unable to determine media type for image", "image", imageRef)
 		os.Exit(1)
 	}
 
@@ -114,7 +122,7 @@ func main() {
 	}
 
 	if downloadErr != nil {
-		l.Error(downloadErr, "unable to download image", "image", image, "mediaType", mediaType)
+		l.Error(downloadErr, "unable to download image", "image", imageRef, "mediaType", mediaType)
 		os.Exit(1)
 	}
 

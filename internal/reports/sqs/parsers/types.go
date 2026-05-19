@@ -11,8 +11,8 @@ package parsers
 import (
 	"context"
 
-	sqsTypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
-	"github.com/crashappsec/chalkular/api/chalk"
+	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
+	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
 )
 
-type ChalkReportParser = func(context.Context, sqsTypes.Message) ([]chalk.Report, error)
+type ChalkReportParser = func(context.Context, sqstypes.Message) ([]chalk.Report, error)

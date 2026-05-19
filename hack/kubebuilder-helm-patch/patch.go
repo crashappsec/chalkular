@@ -26,10 +26,11 @@ const (
 	chartPath       = chartDir + "Chart.yaml"
 	chartValuesPath = chartDir + "values.yaml"
 
-	managerPath       = templatesDir + "manager/manager.yaml"
-	downloaderPath    = templatesDir + "extras/chalkmark-extract.yaml"
-	uploaderPath      = templatesDir + "extras/results.yaml"
-	reportServicePath = templatesDir + "extras/report-http.yaml"
+	managerPath                  = templatesDir + "manager/manager.yaml"
+	downloaderPath               = templatesDir + "extras/chalkmark-extract.yaml"
+	uploaderPath                 = templatesDir + "extras/results.yaml"
+	reportServicePath            = templatesDir + "extras/report-http.yaml"
+	controllerServiceAccountPath = templatesDir + "rbac/controller-manager.yaml"
 )
 
 // replacements is the list of regexp replacements
@@ -57,7 +58,8 @@ var replacements = map[string][]replacement{
 			Replacement: "${1}- args:\n" +
 				// SQS args
 				"${1}  {{- if .Values.intake.sqs.enable}}\n" +
-				"${1}  - --sqs-queue-url={{ .Values.intake.sqs.queue_url }}\n" +
+				"${1}  - --sqs-queue-url={{ .Values.intake.sqs.queueURL }}\n" +
+				"${1}  - --sqs-parser={{ .Values.intake.sqs.parser }}\n" +
 				"${1}  {{- end }}\n" +
 				// HTTP args
 				"${1}  {{- if .Values.intake.http.enable}}\n" +
@@ -130,6 +132,22 @@ var replacements = map[string][]replacement{
 		{
 			Pattern:     regexp.MustCompile(`(?m)^([ ]+)targetPort:.*$`),
 			Replacement: "${1}targetPort: {{ .Values.intake.http.port }}",
+		},
+	},
+	controllerServiceAccountPath: {
+		{
+			Pattern: regexp.MustCompile(`(?m)^([ ]+)labels:`),
+			Replacement: "${1}labels:\n" +
+				"${1}  {{- range $$key, $$val := .Values.manager.serviceaccount.labels }}\n" +
+				"${1}  {{ $$key }}: {{ $$val | quote }}\n" +
+				"${1}  {{- end}}",
+		},
+		{
+			Pattern: regexp.MustCompile(`(?m)^([ ]+)annotations:`),
+			Replacement: "${1}annotations:\n" +
+				"${1}  {{- range $$key, $$val := .Values.manager.serviceaccount.annotations }}\n" +
+				"${1}  {{ $$key }}: {{ $$val | quote }}\n" +
+				"${1}  {{- end}}",
 		},
 	},
 }

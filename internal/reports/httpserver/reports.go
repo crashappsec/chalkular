@@ -14,7 +14,7 @@ import (
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/crashappsec/chalkular/api/chalk"
+	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
 	v1beta1 "github.com/crashappsec/chalkular/api/v1beta1/httpserver"
 	"github.com/crashappsec/chalkular/internal/reports"
 	"github.com/gin-gonic/gin"

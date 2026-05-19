@@ -11,7 +11,7 @@ package reports
 import (
 	"context"
 
-	"github.com/crashappsec/chalkular/api/chalk"
+	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
 )
 
 type SchedulerResult chan error

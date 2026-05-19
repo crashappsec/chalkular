@@ -15,6 +15,7 @@ import (
 
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/ext"
 	"k8s.io/utils/lru"
 )
 
@@ -28,8 +29,13 @@ type Compiler struct {
 
 func NewCompiler(cacheSize int) (*Compiler, error) {
 	env, err := cel.NewEnv(
-		cel.Variable("chalkmark", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("report", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("each", cel.NullableType(cel.DynType)),
+		ext.Bindings(),
+		ext.Strings(),
+		ext.Lists(),
+		ext.Encoders(),
+		ext.Sets(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating CEL env: %w", err)
@@ -102,6 +108,13 @@ func (c *Compiler) compile(policy *chalkularv1beta1.ChalkReportPolicy) (*Compile
 		compiled.DownloaderParams, err = c.program(*s.Extraction.DownloaderParams)
 		if err != nil {
 			return nil, fmt.Errorf("extraction.downloaderParams: %w", err)
+		}
+	}
+
+	if s.Extraction.ForEach != nil {
+		compiled.ForEach, err = c.program(*s.Extraction.ForEach)
+		if err != nil {
+			return nil, fmt.Errorf("extraction.forEach: %w", err)
 		}
 	}
 

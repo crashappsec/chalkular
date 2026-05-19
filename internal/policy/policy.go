@@ -10,6 +10,7 @@ package policy
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/google/cel-go/cel"
@@ -24,14 +25,14 @@ type CompiledPolicy struct {
 
 	// Optional //
 
+	ForEach          cel.Program
 	DownloaderParams cel.Program
 	ProfileParams    cel.Program
 }
 
-func (c CompiledPolicy) Matches(report, chalkmark map[string]any) (bool, error) {
+func (c CompiledPolicy) Matches(report map[string]any) (bool, error) {
 	policyMatch, _, err := c.MatchCondition.Eval(map[string]any{
-		"chalkmark": chalkmark,
-		"report":    report,
+		"report": report,
 	})
 	if err != nil {
 		return false, err
@@ -43,72 +44,134 @@ func (c CompiledPolicy) Matches(report, chalkmark map[string]any) (bool, error) 
 	return matched, nil
 }
 
-func (c CompiledPolicy) ExtractTargets(report, chalkmark map[string]any) ([]v1beta1.Target, error) {
-	activation := map[string]any{
-		"chalkmark": chalkmark,
-		"report":    report,
+type PipelineValues struct {
+	Target           v1beta1.Target
+	DownloaderParams []v1beta1.ParameterSetting
+	ProfileParams    []v1beta1.ParameterSetting
+}
+
+func (c CompiledPolicy) Extract(report map[string]any) ([]PipelineValues, error) {
+	var activations []map[string]any
+	if c.ForEach != nil {
+		each, err := evalForEach(c.ForEach, report)
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate for each expression: %w", err)
+		}
+		for _, e := range each {
+			activations = append(activations, map[string]any{
+				"report": report,
+				"each":   e,
+			})
+		}
+
+	} else {
+		activations = append(activations, map[string]any{"report": report})
 	}
-	target, err := evalProgramToStringMap(c.Target, activation)
+
+	values := make([]PipelineValues, len(activations))
+	for i, a := range activations {
+		target, err := evalTarget(c.Target, a)
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate target: %w", err)
+		}
+
+		vals := PipelineValues{
+			Target: target,
+		}
+
+		if c.ProfileParams != nil {
+			vals.ProfileParams, err = evalParameters(c.ProfileParams, a)
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate profile parameters: %w", err)
+			}
+		}
+
+		if c.DownloaderParams != nil {
+			vals.DownloaderParams, err = evalParameters(c.DownloaderParams, a)
+			if err != nil {
+				return nil, fmt.Errorf("failed to evalulate downloader params: %w", err)
+			}
+		}
+		values[i] = vals
+	}
+	return values, nil
+}
+
+func evalForEach(p cel.Program, report map[string]any) ([]any, error) {
+	val, _, err := p.Eval(map[string]any{
+		"report": report,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	identifier, exist := target["identifier"]
-	if !exist {
-		return nil, fmt.Errorf("missing identifier for target CEL expression")
+	switch v := val.Value().(type) {
+	case []any:
+		return v, nil
+	case []ref.Val:
+		var result []any
+		for _, i := range v {
+			result = append(result, i.Value())
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("invalid type returned for 'forEach' , expected list but got %T", v)
 	}
-	return []v1beta1.Target{{Identifier: identifier, Version: target["version"]}}, nil
-
 }
 
-func (c CompiledPolicy) ExtractParameters(report, chalkmark map[string]any) (profile, downloader []v1beta1.ParameterSetting, err error) {
-	activation := map[string]any{
-		"chalkmark": chalkmark,
-		"report":    report,
-	}
-	if c.ProfileParams != nil {
-		pParams, err := evalProgramToStringMap(c.ProfileParams, activation)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to eval profile params: %w", err)
-		}
-		for k, v := range pParams {
-			profile = append(profile, v1beta1.ParameterSetting{
-				Name:  k,
-				Value: v,
-			})
-		}
-	}
-
-	if c.DownloaderParams != nil {
-		dParams, err := evalProgramToStringMap(c.DownloaderParams, activation)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to eval downloader params: %w", err)
-		}
-		for k, v := range dParams {
-			downloader = append(downloader, v1beta1.ParameterSetting{
-				Name:  k,
-				Value: v,
-			})
-		}
-	}
-
-	return profile, downloader, nil
-
-}
-
-func evalProgramToStringMap(p cel.Program, activation map[string]any) (map[string]string, error) {
+func evalParameters(p cel.Program, activation map[string]any) ([]v1beta1.ParameterSetting, error) {
 	val, _, err := p.Eval(activation)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make(map[string]string)
-	m, ok := val.Value().(map[ref.Val]ref.Val)
+	var settings []v1beta1.ParameterSetting
+	native, err := val.ConvertToNative(reflect.TypeFor[map[string]string]())
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal parameters from %v: %w", val.Value(), err)
+	}
+
+	m, ok := native.(map[string]string)
 	if !ok {
-		return nil, fmt.Errorf("invalid type for cel expression, expected string map got %s", val.Type().TypeName())
+		return nil, fmt.Errorf("failed to marshal parameters, got unexpected type %T", native)
 	}
+
 	for k, v := range m {
-		out[fmt.Sprint(k.Value())] = fmt.Sprint(v.Value())
+		settings = append(settings, v1beta1.ParameterSetting{
+			Name:  k,
+			Value: v,
+		})
 	}
-	return out, nil
+	return settings, nil
+}
+
+func evalTarget(p cel.Program, activation map[string]any) (v1beta1.Target, error) {
+	val, _, err := p.Eval(activation)
+	if err != nil {
+		return v1beta1.Target{}, err
+	}
+
+	native, err := val.ConvertToNative(reflect.TypeFor[map[string]string]())
+	if err != nil {
+		return v1beta1.Target{}, fmt.Errorf("failed to marshal target from value %s: %w", val.Value(), err)
+	}
+
+	m, ok := native.(map[string]string)
+	if !ok {
+		return v1beta1.Target{}, fmt.Errorf("failed to marshal target, got unexpected type %T", native)
+	}
+
+	id, idFound := m["identifier"]
+	if !idFound {
+		return v1beta1.Target{}, fmt.Errorf("target must container identifier")
+	}
+
+	target := v1beta1.Target{
+		Identifier: id,
+	}
+
+	if ver, verFound := m["version"]; verFound {
+		target.Version = ver
+	}
+	return target, nil
 }
