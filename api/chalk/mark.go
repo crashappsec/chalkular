@@ -8,20 +8,6 @@
 
 package chalk
 
-// Key is a string key for a item
-// instead a chalk report or chalk mark
-type Key = string
-
-const (
-	// KeyActionID is the chalk report key
-	// for the action ID value.
-	KeyActionID Key = "_ACTION_ID"
-
-	// KeyChalks is the chalk report key
-	// that will contain a list of chalk marks
-	// created from the operation. Each item
-	// should be of type [Mark]
-	KeyChalks Key = "_CHALKS"
-)
-
-type Report = map[Key]any
+// Mark is the chalk type for an object containing
+// metadata for a specific artifact that was produced.
+type Mark = map[Key]any

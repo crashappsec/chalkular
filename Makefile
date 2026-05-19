@@ -233,6 +233,8 @@ build-helm: kubebuilder helmpatch-plugin yq ## Generate a helm-chart using kubeb
 	@"$(YQ)" -ie '.uploader.image =  {"repository": strenv(CHALKULAR_UPLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' dist/chart/values.yaml
 	@"$(YQ)" -ie '(.uploader | key) head_comment="Configure uploader image"' dist/chart/values.yaml
 	@"$(YQ)" -ie '.appVersion = (strenv(CHALKULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
+	@"$(YQ)" -ie '.manager.serviceaccount =  {"annoations": {}, "labels": {}}' dist/chart/values.yaml
+	@"$(YQ)" -ie '(.manager.serviceaccount | key) head_comment="Configure manager service account"' dist/chart/values.yaml
 
 
 .PHONY: clean-helm
@@ -431,7 +433,7 @@ helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify
 	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
 		--namespace $(HELM_NAMESPACE) \
 		--create-namespace \
-		--set manager.image.repository=$${CHALKULAR_CONTROLLER_IMG%:*} \
+		--set manager.image.repository=$${CHALKULAR_CONTROLLER_REPOSITORY%:*} \
 		--set manager.image.tag=$${CHALKULAR_CONTROLLER_IMG##*:} \
 		--set downloader.image.repository=$${CHALKULAR_DOWNLOADER_IMG%:*} \
 		--set downloader.image.tag=$${CHALKULAR_DOWNLOADER_IMG##*:} \

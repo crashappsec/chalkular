@@ -67,7 +67,7 @@ var _ = Describe("ChalkReportPolicy Controller", Ordered, func() {
 					Spec: chalkularv1beta1.ChalkReportPolicySpec{
 						MatchCondition: "report['_ACTION_ID'] == 'test'",
 						Extraction: chalkularv1beta1.ChalkReportPolicyExtraction{
-							Target: "{'identifier': 'testing', 'version': '1'}",
+							Targets: "{'identifier': 'testing', 'version': '1'}",
 						},
 						PipelineTemplate: ocularv1beta1.PipelineTemplate{
 							// ObjectMeta: metav1.ObjectMeta{

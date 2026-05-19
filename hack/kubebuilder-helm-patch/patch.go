@@ -26,10 +26,11 @@ const (
 	chartPath       = chartDir + "Chart.yaml"
 	chartValuesPath = chartDir + "values.yaml"
 
-	managerPath       = templatesDir + "manager/manager.yaml"
-	downloaderPath    = templatesDir + "extras/chalkmark-extract.yaml"
-	uploaderPath      = templatesDir + "extras/results.yaml"
-	reportServicePath = templatesDir + "extras/report-http.yaml"
+	managerPath                  = templatesDir + "manager/manager.yaml"
+	downloaderPath               = templatesDir + "extras/chalkmark-extract.yaml"
+	uploaderPath                 = templatesDir + "extras/results.yaml"
+	reportServicePath            = templatesDir + "extras/report-http.yaml"
+	controllerServiceAccountPath = templatesDir + "rbac/controller-manager.yaml"
 )
 
 // replacements is the list of regexp replacements
@@ -71,24 +72,26 @@ var replacements = map[string][]replacement{
 				"${1}  {{- end }}",
 		},
 		{
-			Pattern: regexp.MustCompile(`(?m)^([ ]+)env: (\[\])?`),
+			Pattern: regexp.MustCompile(`(?m)^([ ]+)env: \[\]`),
 			Replacement: "${1}env:\n" +
-				"${1}  {{- with .Values.manager.env }}\n" +
-				"${1}  {{- toYaml . | nindent 10 }}\n" +
+				"${1}  {{- if .Values.manager.env }}\n" +
+				"${1}  {{- toYaml .Values.manager.env | nindent 8 }}\n" +
+				"${1}  {{- else}}\n" +
+				"${1}  []\n" +
 				"${1}  {{- end}}",
 		},
 		{
 			Pattern: regexp.MustCompile(`(?m)^([ ]+)volumeMounts:`),
 			Replacement: "${1}volumeMounts:\n" +
-				"${1}  {{- with .Values.manager.volumeMounts }}\n" +
-				"${1}  {{- toYaml . | nindent 10}}\n" +
+				"${1}  {{- if .Values.manager.volumeMounts }}\n" +
+				"${1}  {{- toYaml .Values.manager.volumeMounts | nindent 8}}\n" +
 				"${1}  {{- end}}",
 		},
 		{
 			Pattern: regexp.MustCompile(`(?m)^([ ]+)volumes:`),
 			Replacement: "${1}volumes:\n" +
-				"${1}  {{- with .Values.manager.volumes }}\n" +
-				"${1}  {{- toYaml . | nindent 8}}\n" +
+				"${1}  {{- if .Values.manager.volumes }}\n" +
+				"${1}  {{- toYaml .Values.manager.volumes | nindent 6}}\n" +
 				"${1}  {{- end}}",
 		},
 	},
@@ -128,6 +131,22 @@ var replacements = map[string][]replacement{
 		{
 			Pattern:     regexp.MustCompile(`(?m)^([ ]+)targetPort:.*$`),
 			Replacement: "${1}targetPort: {{ .Values.intake.http.port }}",
+		},
+	},
+	controllerServiceAccountPath: {
+		{
+			Pattern: regexp.MustCompile(`(?m)^([ ]+)labels:`),
+			Replacement: "${1}labels:\n" +
+				"${1}  {{- range $$key, $$val := .Values.manager.serviceaccount.labels }}\n" +
+				"${1}  {{ $$key }}: {{ $$val | quote }}\n" +
+				"${1}  {{- end}}",
+		},
+		{
+			Pattern: regexp.MustCompile(`(?m)^([ ]+)annotations:`),
+			Replacement: "${1}annotations:\n" +
+				"${1}  {{- range $$key, $$val := .Values.manager.serviceaccount.annotations }}\n" +
+				"${1}  {{ $$key }}: {{ $$val | quote }}\n" +
+				"${1}  {{- end}}",
 		},
 	},
 }

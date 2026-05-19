@@ -15,6 +15,7 @@ import (
 
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/ext"
 	"k8s.io/utils/lru"
 )
 
@@ -28,8 +29,11 @@ type Compiler struct {
 
 func NewCompiler(cacheSize int) (*Compiler, error) {
 	env, err := cel.NewEnv(
-		cel.Variable("chalkmark", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("report", cel.MapType(cel.StringType, cel.DynType)),
+		ext.Strings(),
+		ext.Lists(),
+		ext.Encoders(),
+		ext.Sets(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating CEL env: %w", err)
@@ -87,7 +91,7 @@ func (c *Compiler) compile(policy *chalkularv1beta1.ChalkReportPolicy) (*Compile
 		return nil, fmt.Errorf("matchCondition: %w", err)
 	}
 
-	target, err := c.program(s.Extraction.Target)
+	target, err := c.program(s.Extraction.Targets)
 	if err != nil {
 		return nil, fmt.Errorf("extraction.target: %w", err)
 	}

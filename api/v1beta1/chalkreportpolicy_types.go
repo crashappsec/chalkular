@@ -45,10 +45,12 @@ type ChalkReportPolicySpec struct {
 type ChalkReportPolicyExtraction struct {
 	// Target is a CEL expression to extract the
 	// [v1beta1.Target] from the chalk report.
-	// The expression should return a string map
-	// with two keys: 'identifier' and (optionally) 'version'
+	// The expression should return a list of string maps
+	// with two keys: 'identifier' and (optionally) 'version'.
+	// The expression can also return a single map in which case it will
+	// automatically be created into a singleton list
 	// +required
-	Target string `json:"target"`
+	Targets string `json:"targets"`
 	// DownloaderParams is a CEL expression to extract
 	// dynamic parameters from the chalk report to
 	// apply to the downloader. The expression should

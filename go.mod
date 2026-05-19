@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.10
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.0
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.21
 	github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.12.0
 	github.com/crashappsec/ocular v0.3.0
@@ -21,6 +22,7 @@ require (
 	k8s.io/client-go v0.35.4
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
 	sigs.k8s.io/controller-runtime v0.23.3
+	sigs.k8s.io/kubebuilder/v4 v4.13.1
 )
 
 require (
@@ -46,7 +48,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.14 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.22 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.22 // indirect
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.15 // indirect
@@ -173,7 +174,6 @@ require (
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
-	sigs.k8s.io/kubebuilder/v4 v4.13.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2-0.20260122202528-d9cc6641c482 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
