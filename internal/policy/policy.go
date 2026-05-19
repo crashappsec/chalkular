@@ -9,7 +9,9 @@
 package policy
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/google/cel-go/cel"
@@ -28,10 +30,9 @@ type CompiledPolicy struct {
 	ProfileParams    cel.Program
 }
 
-func (c CompiledPolicy) Matches(report, chalkmark map[string]any) (bool, error) {
+func (c CompiledPolicy) Matches(report map[string]any) (bool, error) {
 	policyMatch, _, err := c.MatchCondition.Eval(map[string]any{
-		"chalkmark": chalkmark,
-		"report":    report,
+		"report": report,
 	})
 	if err != nil {
 		return false, err
@@ -43,28 +44,17 @@ func (c CompiledPolicy) Matches(report, chalkmark map[string]any) (bool, error) 
 	return matched, nil
 }
 
-func (c CompiledPolicy) ExtractTargets(report, chalkmark map[string]any) ([]v1beta1.Target, error) {
+func (c CompiledPolicy) ExtractTargets(report map[string]any) ([]v1beta1.Target, error) {
 	activation := map[string]any{
-		"chalkmark": chalkmark,
-		"report":    report,
+		"report": report,
 	}
-	target, err := evalProgramToStringMap(c.Target, activation)
-	if err != nil {
-		return nil, err
-	}
-
-	identifier, exist := target["identifier"]
-	if !exist {
-		return nil, fmt.Errorf("missing identifier for target CEL expression")
-	}
-	return []v1beta1.Target{{Identifier: identifier, Version: target["version"]}}, nil
+	return evalToListOfStruct[v1beta1.Target](c.Target, activation)
 
 }
 
-func (c CompiledPolicy) ExtractParameters(report, chalkmark map[string]any) (profile, downloader []v1beta1.ParameterSetting, err error) {
+func (c CompiledPolicy) ExtractParameters(report map[string]any) (profile, downloader []v1beta1.ParameterSetting, err error) {
 	activation := map[string]any{
-		"chalkmark": chalkmark,
-		"report":    report,
+		"report": report,
 	}
 	if c.ProfileParams != nil {
 		pParams, err := evalProgramToStringMap(c.ProfileParams, activation)
@@ -111,4 +101,48 @@ func evalProgramToStringMap(p cel.Program, activation map[string]any) (map[strin
 		out[fmt.Sprint(k.Value())] = fmt.Sprint(v.Value())
 	}
 	return out, nil
+}
+
+// evalToListOfStruct will evaluate a CEL expression to a list of structs `T`.
+// It also supports the CEL expression evalutation to one `T` and creating a singleton
+// list
+func evalToListOfStruct[T any](p cel.Program, activation map[string]any) ([]T, error) {
+	val, _, err := p.Eval(activation)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("here", val.Value())
+
+	var items []any
+	switch v := val.Value().(type) {
+	case []ref.Val:
+		items = make([]any, len(v))
+		for i, item := range v {
+			native, err := item.ConvertToNative(reflect.TypeFor[map[string]any]())
+			if err != nil {
+				return nil, fmt.Errorf("converting list item %d: %w", i, err)
+			}
+			items[i] = native
+		}
+
+	case map[ref.Val]ref.Val: // case for singleton list
+		native, err := val.ConvertToNative(reflect.TypeFor[map[string]any]())
+		if err != nil {
+			return nil, fmt.Errorf("unsupported expression type %T: %w", val.Value(), err)
+		}
+		items = []any{native}
+	default:
+		return nil, fmt.Errorf("unsupported expression type %T: %w", val.Value(), err)
+	}
+
+	b, err := json.Marshal(items)
+	if err != nil {
+		return nil, fmt.Errorf("unable to marshal CEL expression: %w", err)
+	}
+
+	var result []T
+	if err := json.Unmarshal(b, &result); err != nil {
+		return nil, fmt.Errorf("failed to marshal CEl expression into type %T: %w", result, err)
+	}
+	return result, nil
 }

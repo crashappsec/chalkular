@@ -44,16 +44,17 @@ func main() {
 	ctx := ctrl.LoggerInto(context.Background(), l)
 
 	image := os.Getenv(v1beta1.EnvVarTargetIdentifier)
-	platform := os.Getenv(v1beta1.EnvVarTargetVersion)
+	tag := os.Getenv(v1beta1.EnvVarTargetVersion)
 
-	l = l.WithValues("image", image, "platform", platform)
+	l = l.WithValues("image", image, "tag", tag)
+	l.Info("downloading image")
 
 	var nameOpts []name.Option
 	if insecure := os.Getenv("OCULAR_PARAM_INSECURE_REGISTRY"); insecure != "" {
 		nameOpts = append(nameOpts, name.Insecure)
 	}
 
-	ref, err := name.ParseReference(image, nameOpts...)
+	ref, err := name.ParseReference(image+":"+tag, nameOpts...)
 	if err != nil {
 		l.Error(err, "failed to parse image reference", "image", image)
 		os.Exit(1)
@@ -80,6 +81,7 @@ func main() {
 		remote.WithAuthFromKeychain(authn.NewMultiKeychain(keychains...)),
 	}
 
+	platform := os.Getenv("OCULAR_PARAM_PLATFORM")
 	if platform != "" {
 		p, err := v1.ParsePlatform(platform)
 		if err != nil {

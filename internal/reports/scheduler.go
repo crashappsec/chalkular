@@ -80,11 +80,20 @@ func (s *Scheduler) Start(ctx context.Context) error {
 				close(event.Result)
 				continue
 			}
-			err := s.createPipelinesForChalkmarks(ctx, actionIDStr, report)
+			pipelines, err := s.createPipelinesForReport(ctx, actionIDStr, report)
 			if err != nil {
 				l.Error(err, "failures reported for pipelines created from report", "action-id", actionIDStr)
 			}
-			event.Result <- err
+			var merr *multierror.Error
+			for _, pipeline := range pipelines {
+				_, err = s.ocularCS.ApiV1beta1().Pipelines(pipeline.Namespace).
+					Create(ctx, pipeline, metav1.CreateOptions{})
+				if err != nil {
+					merr = multierror.Append(merr, fmt.Errorf("unable to create pipeline %s in namespace %s: %w", pipeline.Name, pipeline.Namespace, err))
+				}
+			}
+
+			event.Result <- merr.ErrorOrNil()
 			close(event.Result)
 		}
 	}
@@ -92,54 +101,54 @@ func (s *Scheduler) Start(ctx context.Context) error {
 
 // scheduleAnalysis creates and submits pipelines for scanning the given artifact
 // in the given namespace.
-func (s *Scheduler) createPipelinesForChalkmarks(ctx context.Context, actionID string, report map[string]any) error {
-	chalks, err := extractChalksFromReport(ctx, actionID, report)
-	if err != nil {
-		return fmt.Errorf("failed to extract chalk marks from report: %w", err)
-	}
-	var merr *multierror.Error
-	for _, chalkmark := range chalks {
-		pipelines, err := s.createPipelinesForChalkMark(ctx, actionID, report, chalkmark)
-		if err != nil {
-			merr = multierror.Append(merr, err)
-		}
+// func (s *Scheduler) createPipelinesForReport(ctx context.Context, actionID string, report map[string]any) error {
+// 	chalks, err := extractChalksFromReport(ctx, actionID, report)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to extract chalk marks from report: %w", err)
+// 	}
+// 	var merr *multierror.Error
+// 	for _, chalkmark := range chalks {
+// 		pipelines, err := s.createPipelinesForChalkmark(ctx, actionID, report, chalkmark)
+// 		if err != nil {
+// 			merr = multierror.Append(merr, err)
+// 		}
 
-		for _, pipeline := range pipelines {
-			_, err = s.ocularCS.ApiV1beta1().Pipelines(pipeline.Namespace).
-				Create(ctx, pipeline, metav1.CreateOptions{})
-			if err != nil {
-				merr = multierror.Append(merr, fmt.Errorf("unable to create pipeline %s in namespace %s: %w", pipeline.Name, pipeline.Namespace, err))
-			}
-		}
+// 		for _, pipeline := range pipelines {
+// 			_, err = s.ocularCS.ApiV1beta1().Pipelines(pipeline.Namespace).
+// 				Create(ctx, pipeline, metav1.CreateOptions{})
+// 			if err != nil {
+// 				merr = multierror.Append(merr, fmt.Errorf("unable to create pipeline %s in namespace %s: %w", pipeline.Name, pipeline.Namespace, err))
+// 			}
+// 		}
 
-	}
-	return merr.ErrorOrNil()
-}
+// 	}
+// 	return merr.ErrorOrNil()
+// }
 
-func extractChalksFromReport(ctx context.Context, actionID string, report chalk.Report) ([]chalk.Mark, error) {
-	l := logf.FromContext(ctx).WithValues("actionID", actionID)
-	chalksJSON, exist := report[chalk.KeyChalks]
-	if !exist {
-		return nil, nil
-	}
-	chalksList, valid := chalksJSON.([]any)
-	if !valid {
-		return nil, fmt.Errorf("invalid type for '_CHALKS' key, expected list %T", chalksJSON)
-	}
+// func extractChalksFromReport(ctx context.Context, actionID string, report chalk.Report) ([]chalk.Mark, error) {
+// 	l := logf.FromContext(ctx).WithValues("actionID", actionID)
+// 	chalksJSON, exist := report[chalk.KeyChalks]
+// 	if !exist {
+// 		return nil, nil
+// 	}
+// 	chalksList, valid := chalksJSON.([]any)
+// 	if !valid {
+// 		return nil, fmt.Errorf("invalid type for '_CHALKS' key, expected list %T", chalksJSON)
+// 	}
 
-	var chalks []chalk.Mark
-	for _, c := range chalksList {
-		chalkmark, valid := c.(chalk.Mark)
-		if !valid {
-			l.Info("invalid type for chalk mark, skipping", "chalkmark-type", fmt.Sprintf("%T", c))
-			continue
-		}
-		chalks = append(chalks, chalkmark)
-	}
-	return chalks, nil
-}
+// 	var chalks []chalk.Mark
+// 	for _, c := range chalksList {
+// 		chalkmark, valid := c.(chalk.Mark)
+// 		if !valid {
+// 			l.Info("invalid type for chalk mark, skipping", "chalkmark-type", fmt.Sprintf("%T", c))
+// 			continue
+// 		}
+// 		chalks = append(chalks, chalkmark)
+// 	}
+// 	return chalks, nil
+// }
 
-func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID string, report chalk.Report, chalkmark chalk.Mark) ([]*ocularv1beta1.Pipeline, error) {
+func (s *Scheduler) createPipelinesForReport(ctx context.Context, actionID string, report chalk.Report) ([]*ocularv1beta1.Pipeline, error) {
 	l := logf.FromContext(ctx).WithValues("actionID", actionID)
 	var (
 		pipelines []*ocularv1beta1.Pipeline
@@ -172,7 +181,7 @@ func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID st
 			policyLogger.Error(err, "unable to get compiled expressions for policy, skipping")
 			continue
 		}
-		matches, err := p.Matches(report, chalkmark)
+		matches, err := p.Matches(report)
 		if err != nil {
 			policyLogger.Error(err, "failed to run match expresssion, skipping")
 			continue
@@ -182,14 +191,14 @@ func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID st
 			continue
 		}
 
-		targets, err := p.ExtractTargets(report, chalkmark)
+		targets, err := p.ExtractTargets(report)
 		if err != nil {
 			policyLogger.Error(err, "failed to evalutate policy target, skipping")
 			merr = multierror.Append(merr, err)
 			continue
 		}
 
-		profileParams, dlParams, err := p.ExtractParameters(report, chalkmark)
+		profileParams, dlParams, err := p.ExtractParameters(report)
 		if err != nil {
 			policyLogger.Error(err, "failed to evalutate policy parameters, skipping")
 			merr = multierror.Append(merr, err)

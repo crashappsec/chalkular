@@ -62,15 +62,17 @@ spec:
                       apply to the profile. The expression should
                       return a string map.
                     type: string
-                  target:
+                  targets:
                     description: |-
                       Target is a CEL expression to extract the
                       [v1beta1.Target] from the chalk report.
-                      The expression should return a string map
-                      with two keys: 'identifier' and (optionally) 'version'
+                      The expression should return a list of string maps
+                      with two keys: 'identifier' and (optionally) 'version'.
+                      The expression can also return a single map in which case it will
+                      automatically be created into a singleton list
                     type: string
                 required:
-                - target
+                - targets
                 type: object
               matchCondition:
                 description: |-

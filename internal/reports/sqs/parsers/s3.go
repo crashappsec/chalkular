@@ -11,6 +11,7 @@ package parsers
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"encoding/json"
 	"net/url"
@@ -24,7 +25,12 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func S3EventReportParser(s3client *s3.Client) ChalkReportParser {
+func S3EventReportParser(cfg aws.Config) ChalkReportParser {
+	s3client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		if os.Getenv("AWS_S3_USE_PATH_STYLE") != "" {
+			o.UsePathStyle = true
+		}
+	})
 	return func(ctx context.Context, msg sqsTypes.Message) ([]chalk.Report, error) {
 		l := logf.FromContext(ctx)
 		l.Info("parsing S3 notification from message body")
@@ -46,26 +52,28 @@ func S3EventReportParser(s3client *s3.Client) ChalkReportParser {
 			recordL := l.WithValues("object", object, "bucket", bucket)
 			recordL.Info("retriveing report from S3 object")
 
-			output, err := s3client.GetObject(ctx, &s3.GetObjectInput{
-				Bucket:    aws.String(bucket.Name),
-				Key:       aws.String(object.URLDecodedKey),
-				VersionId: aws.String(object.VersionID),
-				IfMatch:   aws.String(object.ETag),
-			})
+			input := &s3.GetObjectInput{
+				Bucket: aws.String(bucket.Name),
+				Key:    aws.String(object.URLDecodedKey),
+				// VersionId: aws.String(object.VersionID),
+				IfMatch: aws.String(object.ETag),
+			}
+
+			output, err := s3client.GetObject(ctx, input)
 			if err != nil {
 				recordL.Error(err, "unable to get object, skipping")
 				merr = multierror.Append(err, err)
 				continue
 			}
 
-			var report chalk.Report
-			err = json.NewDecoder(output.Body).Decode(&report)
+			var objectReports []chalk.Report
+			err = json.NewDecoder(output.Body).Decode(&objectReports)
 			if err != nil {
 				recordL.Error(err, "unable to decode object contents, skipping")
 				merr = multierror.Append(err, err)
 				continue
 			}
-			reports = append(reports, report)
+			reports = append(reports, objectReports...)
 
 		}
 

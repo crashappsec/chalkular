@@ -16,7 +16,6 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/crashappsec/chalkular/internal/policy"
 	"github.com/crashappsec/chalkular/internal/reports"
 	"github.com/crashappsec/chalkular/internal/reports/httpserver"
@@ -234,7 +233,7 @@ func main() {
 
 	if len(reportHTTPCertPath) > 0 {
 		setupLog.Info("Initializing listener certificate watcher using provided certificates",
-			"artifac-http-cert-path", reportHTTPCertPath,
+			"report-http-cert-path", reportHTTPCertPath,
 			"report-http-cert-name", reportHTTPCertName,
 			"report-http-cert-key", reportHTTPCertKey)
 
@@ -314,7 +313,7 @@ func configureSQSListener(cfg aws.Config, sc *reports.SchedulerClient, q, p stri
 	var parser parsers.ChalkReportParser
 	switch p {
 	case "s3-event":
-		parser = parsers.S3EventReportParser(s3.NewFromConfig(cfg))
+		parser = parsers.S3EventReportParser(cfg)
 	case "message-body":
 		parser = parsers.RawReportParser
 	case "":
