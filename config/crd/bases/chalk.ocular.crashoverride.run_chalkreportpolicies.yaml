@@ -137,9 +137,22 @@ spec:
                                   description: Value is the value to set the parameter
                                     to.
                                   type: string
+                                valueFrom:
+                                  description: ValueFrom is the source of a value
+                                  properties:
+                                    parentParam:
+                                      description: |-
+                                        ParentParam indicates the value of this parameter should be derived
+                                        from the value of another. This setting can only be applied for resources
+                                        That reference another resource using [ParameterizedLocalObjectReference]
+                                        and are also invocated with parameters themselves (i.e. uploader references in
+                                        profiles)
+                                      type: string
+                                  required:
+                                  - parentParam
+                                  type: object
                               required:
                               - name
-                              - value
                               type: object
                             type: array
                             x-kubernetes-list-map-keys:
@@ -206,9 +219,22 @@ spec:
                                   description: Value is the value to set the parameter
                                     to.
                                   type: string
+                                valueFrom:
+                                  description: ValueFrom is the source of a value
+                                  properties:
+                                    parentParam:
+                                      description: |-
+                                        ParentParam indicates the value of this parameter should be derived
+                                        from the value of another. This setting can only be applied for resources
+                                        That reference another resource using [ParameterizedLocalObjectReference]
+                                        and are also invocated with parameters themselves (i.e. uploader references in
+                                        profiles)
+                                      type: string
+                                  required:
+                                  - parentParam
+                                  type: object
                               required:
                               - name
-                              - value
                               type: object
                             type: array
                             x-kubernetes-list-map-keys:
@@ -217,6 +243,11 @@ spec:
                         required:
                         - name
                         type: object
+                      runtimeClassName:
+                        description: |-
+                          RuntimeClassName is the name of the RuntimeClass that will be used to run the scan and upload pods.
+                          If not set, the cluster's default runtime handler will be used.
+                        type: string
                       scanServiceAccountName:
                         description: |-
                           ScanServiceAccountName is the name of the service account that will be used to run the scan job.

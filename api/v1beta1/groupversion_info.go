@@ -12,20 +12,42 @@
 package v1beta1
 
 import (
+	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
+)
+
+const (
+	Group   = "chalk.ocular.crashoverride.run"
+	Version = "v1beta1"
 )
 
 var (
 	// GroupVersion is group version used to register these objects.
-	GroupVersion = schema.GroupVersion{Group: "chalk.ocular.crashoverride.run", Version: "v1beta1"}
+	GroupVersion = schema.GroupVersion{Group: Group, Version: Version}
 	// SchemeGroupVersion is group version used to register these objects.
 	// It is the same as GroupVersion and provided for legacy compatibility.
 	SchemeGroupVersion = GroupVersion
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
-	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
-
+	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
+
+func addKnownTypes(scheme *runtime.Scheme) error {
+	scheme.AddKnownTypes(SchemeGroupVersion,
+		&ChalkReportPolicy{}, &ChalkReportPolicyList{},
+	)
+
+	scheme.AddKnownTypes(ocularv1beta1.SchemeGroupVersion,
+		&ocularv1beta1.Pipeline{}, &ocularv1beta1.PipelineList{},
+		&ocularv1beta1.Profile{}, &ocularv1beta1.ProfileList{},
+		&ocularv1beta1.Downloader{}, &ocularv1beta1.DownloaderList{},
+		&ocularv1beta1.Uploader{}, &ocularv1beta1.UploaderList{},
+	)
+
+	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
+	return nil
+}

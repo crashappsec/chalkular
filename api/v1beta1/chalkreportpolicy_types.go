@@ -134,7 +134,3 @@ type ChalkReportPolicyList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ChalkReportPolicy `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ChalkReportPolicy{}, &ChalkReportPolicyList{})
-}
