@@ -9,13 +9,19 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/crashappsec/chalkular/internal/policy"
 	"github.com/crashappsec/chalkular/internal/reports"
-	"github.com/crashappsec/chalkular/internal/reports/listeners/httpserver"
+	"github.com/crashappsec/chalkular/internal/reports/httpserver"
+	"github.com/crashappsec/chalkular/internal/reports/sqs"
+	"github.com/crashappsec/chalkular/internal/reports/sqs/parsers"
+	"github.com/crashappsec/chalkular/internal/utils"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -69,7 +75,7 @@ func main() {
 	var reportHTTPAddr string
 	var reportHTTPCertPath, reportHTTPCertName, reportHTTPCertKey string
 	var secureReportHTTP bool
-	var sqsQueueURL string
+	var sqsQueueURL, sqsParser string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -105,6 +111,10 @@ func main() {
 		"The name of the report HTTP server key file.")
 	flag.StringVar(&sqsQueueURL, "sqs-queue-url", "",
 		"The URL of the SQS queue to listen for new messages on. Omit this flag to disable SQS lisenting")
+	flag.StringVar(&sqsParser, "sqs-parser", "message-body",
+		"Configure how chalk reports are parsed from SQS messages. Either \"message-body\""+
+			"(parse JSON directly from message body) or "+
+			"\"s3-event\" (parsed as S3 event notification, and S3 object is assumed to be chalk report)")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -197,8 +207,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ctx := context.Background()
-
 	policyCompiler, err := policy.NewCompiler(1024)
 	if err != nil {
 		setupLog.Error(err, "unable to construct policy compiler")
@@ -225,7 +233,7 @@ func main() {
 
 	if len(reportHTTPCertPath) > 0 {
 		setupLog.Info("Initializing listener certificate watcher using provided certificates",
-			"artifac-http-cert-path", reportHTTPCertPath,
+			"report-http-cert-path", reportHTTPCertPath,
 			"report-http-cert-name", reportHTTPCertName,
 			"report-http-cert-key", reportHTTPCertKey)
 
@@ -247,18 +255,24 @@ func main() {
 		}
 	}
 
-	// if sqsQueueURL != "" {
-	// 	reportSQSListener, err := sqs.NewListener(ctx, *schedulerClient, sqsQueueURL)
-	// 	if err != nil {
-	// 		setupLog.Error(err, "unable to construct SQS listener")
-	// 		os.Exit(1)
-	// 	}
+	if sqsQueueURL != "" {
+		awsCfg, err := utils.BuildAWSConfig(context.Background())
+		if err != nil {
+			setupLog.Error(err, "unable to load AWS config")
+			os.Exit(1)
+		}
 
-	// 	if err = mgr.Add(reportSQSListener); err != nil {
-	// 		setupLog.Error(err, "unable to register SQS listener")
-	// 		os.Exit(1)
-	// 	}
-	// }
+		reportSQSListener, err := configureSQSListener(awsCfg, schedulerClient, sqsQueueURL, sqsParser)
+		if err != nil {
+			setupLog.Error(err, "failed to construct SQS listener")
+			os.Exit(1)
+		}
+
+		if err = mgr.Add(reportSQSListener); err != nil {
+			setupLog.Error(err, "unable to register SQS listener")
+			os.Exit(1)
+		}
+	}
 
 	if err := (&controller.ChalkReportPolicyReconciler{
 		Client:         mgr.GetClient(),
@@ -291,4 +305,28 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func configureSQSListener(cfg aws.Config, sc *reports.SchedulerClient, q, p string) (*sqs.Listener, error) {
+	setupLog.Info("configuring SQS parser", "parser-name", p)
+
+	var parser parsers.ChalkReportParser
+	switch p {
+	case "s3-event":
+		parser = parsers.S3EventReportParser(cfg)
+	case "message-body":
+		parser = parsers.RawReportParser
+	case "":
+		return nil, fmt.Errorf("SQS parser must be supplied via --sqs-parser")
+	default:
+		return nil, fmt.Errorf("unknown SQS parser %s", p)
+	}
+
+	reportSQSListener, err := sqs.NewListener(cfg, *sc, q, parser)
+	if err != nil {
+		setupLog.Error(err, "unable to construct SQS listener")
+		return nil, err
+	}
+	return reportSQSListener, nil
+
 }

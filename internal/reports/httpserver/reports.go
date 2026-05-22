@@ -14,6 +14,7 @@ import (
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
 	v1beta1 "github.com/crashappsec/chalkular/api/v1beta1/httpserver"
 	"github.com/crashappsec/chalkular/internal/reports"
 	"github.com/gin-gonic/gin"
@@ -23,7 +24,7 @@ var reportslog = logf.Log.WithName("reports-http")
 
 func scheduleReport(scheduler *reports.SchedulerClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var reports []map[string]any
+		var reports []chalk.Report
 		if err := c.BindJSON(&reports); err != nil {
 			errorResponse(c, http.StatusBadRequest, "unable to parse request")
 			return

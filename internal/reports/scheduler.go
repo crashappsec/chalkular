@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/crashappsec/chalkular/api/chalk"
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
+	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
 	"github.com/crashappsec/chalkular/internal/policy"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/pkg/generated/clientset"
@@ -26,11 +26,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type ChalkReport = map[string]any
-type ChalkMark = map[string]any
-
 type event struct {
-	Report ChalkReport
+	Report chalk.Report
 	Result SchedulerResult
 }
 
@@ -83,66 +80,26 @@ func (s *Scheduler) Start(ctx context.Context) error {
 				close(event.Result)
 				continue
 			}
-			err := s.createPipelinesForChalkmarks(ctx, actionIDStr, report)
+			pipelines, err := s.createPipelinesForReport(ctx, actionIDStr, report)
 			if err != nil {
 				l.Error(err, "failures reported for pipelines created from report", "action-id", actionIDStr)
 			}
-			event.Result <- err
+			var merr *multierror.Error
+			for _, pipeline := range pipelines {
+				_, err = s.ocularCS.ApiV1beta1().Pipelines(pipeline.Namespace).
+					Create(ctx, pipeline, metav1.CreateOptions{})
+				if err != nil {
+					merr = multierror.Append(merr, fmt.Errorf("unable to create pipeline %s in namespace %s: %w", pipeline.Name, pipeline.Namespace, err))
+				}
+			}
+
+			event.Result <- merr.ErrorOrNil()
 			close(event.Result)
 		}
 	}
 }
 
-// scheduleAnalysis creates and submits pipelines for scanning the given artifact
-// in the given namespace.
-func (s *Scheduler) createPipelinesForChalkmarks(ctx context.Context, actionID string, report map[string]any) error {
-	chalks, err := extractChalksFromReport(ctx, actionID, report)
-	if err != nil {
-		return fmt.Errorf("failed to extract chalk marks from report: %w", err)
-	}
-	var merr *multierror.Error
-	for _, chalkmark := range chalks {
-		pipelines, err := s.createPipelinesForChalkMark(ctx, actionID, report, chalkmark)
-		if err != nil {
-			merr = multierror.Append(merr, err)
-		}
-
-		for _, pipeline := range pipelines {
-			_, err = s.ocularCS.ApiV1beta1().Pipelines(pipeline.Namespace).
-				Create(ctx, pipeline, metav1.CreateOptions{})
-			if err != nil {
-				merr = multierror.Append(merr, fmt.Errorf("unable to create pipeline %s in namespace %s: %w", pipeline.Name, pipeline.Namespace, err))
-			}
-		}
-
-	}
-	return merr.ErrorOrNil()
-}
-
-func extractChalksFromReport(ctx context.Context, actionID string, report ChalkReport) ([]ChalkMark, error) {
-	l := logf.FromContext(ctx).WithValues("actionID", actionID)
-	chalksJSON, exist := report[chalk.KeyChalks]
-	if !exist {
-		return nil, nil
-	}
-	chalksList, valid := chalksJSON.([]any)
-	if !valid {
-		return nil, fmt.Errorf("invalid type for '_CHALKS' key, expected list %T", chalksJSON)
-	}
-
-	var chalks []ChalkMark
-	for _, c := range chalksList {
-		chalkmark, valid := c.(ChalkMark)
-		if !valid {
-			l.Info("invalid type for chalk mark, skipping", "chalkmark-type", fmt.Sprintf("%T", c))
-			continue
-		}
-		chalks = append(chalks, chalkmark)
-	}
-	return chalks, nil
-}
-
-func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID string, report ChalkReport, chalkmark ChalkMark) ([]*ocularv1beta1.Pipeline, error) {
+func (s *Scheduler) createPipelinesForReport(ctx context.Context, actionID string, report chalk.Report) ([]*ocularv1beta1.Pipeline, error) {
 	l := logf.FromContext(ctx).WithValues("actionID", actionID)
 	var (
 		pipelines []*ocularv1beta1.Pipeline
@@ -170,12 +127,12 @@ func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID st
 			continue
 		}
 
-		programs, err := s.policyCompiler.Get(&reportPolicy)
+		p, err := s.policyCompiler.Get(&reportPolicy)
 		if err != nil {
 			policyLogger.Error(err, "unable to get compiled expressions for policy, skipping")
 			continue
 		}
-		matches, err := programs.Matches(report, chalkmark)
+		matches, err := p.Matches(report)
 		if err != nil {
 			policyLogger.Error(err, "failed to run match expresssion, skipping")
 			continue
@@ -185,40 +142,35 @@ func (s *Scheduler) createPipelinesForChalkMark(ctx context.Context, actionID st
 			continue
 		}
 
-		target, err := programs.ExtractTarget(report, chalkmark)
-		if err != nil {
-			policyLogger.Error(err, "failed to evalutate policy target, skipping")
-			merr = multierror.Append(merr, err)
-			continue
-		}
-
-		profileParams, dlParams, err := programs.ExtractParameters(report, chalkmark)
-		if err != nil {
-			policyLogger.Error(err, "failed to evalutate policy parameters, skipping")
-			merr = multierror.Append(merr, err)
-			continue
-		}
-
-		pipeline := &ocularv1beta1.Pipeline{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "chalkular-",
-				Namespace:    reportPolicy.Namespace,
-				Annotations:  make(map[string]string),
-				Labels:       make(map[string]string),
-			},
-		}
 		pipelineTemplate := reportPolicy.Spec.PipelineTemplate
-		maps.Copy(pipeline.Labels, pipelineTemplate.Labels)
-		maps.Copy(pipeline.Annotations, pipelineTemplate.Annotations)
-		pipelineTemplate.Spec.DeepCopyInto(&pipeline.Spec)
 
-		pipeline.Spec.Target = target
-		pipeline.Spec.DownloaderRef.Parameters = append(pipeline.Spec.DownloaderRef.Parameters, dlParams...)
-		pipeline.Spec.ProfileRef.Parameters = append(pipeline.Spec.ProfileRef.Parameters, profileParams...)
+		values, err := p.Extract(report)
+		if err != nil {
+			policyLogger.Error(err, "failed to extract pipeline values")
+			continue
+		}
+		policyLogger.Info(fmt.Sprintf("policy generated %d values", len(values)), "values", len(values))
+		for _, vs := range values {
+			pipeline := &ocularv1beta1.Pipeline{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "chalkular-",
+					Namespace:    reportPolicy.Namespace,
+					Annotations:  make(map[string]string),
+					Labels:       make(map[string]string),
+				},
+			}
+			maps.Copy(pipeline.Labels, pipelineTemplate.Labels)
+			maps.Copy(pipeline.Annotations, pipelineTemplate.Annotations)
+			pipelineTemplate.Spec.DeepCopyInto(&pipeline.Spec)
 
-		pipelines = append(pipelines, pipeline)
+			pipeline.Spec.DownloaderRef.Parameters = append(pipeline.Spec.DownloaderRef.Parameters, vs.DownloaderParams...)
+			pipeline.Spec.ProfileRef.Parameters = append(pipeline.Spec.ProfileRef.Parameters, vs.ProfileParams...)
+			pipeline.Spec.Target = vs.Target
+			pipelines = append(pipelines, pipeline)
+		}
+
 	}
 
-	l.Info(fmt.Sprintf("generated %d pipelines for chalk mark", len(pipelines)), "pipelines", len(pipelines))
+	l.Info(fmt.Sprintf("generated %d pipelines for chalk report", len(pipelines)), "pipelines", len(pipelines))
 	return pipelines, merr.ErrorOrNil()
 }

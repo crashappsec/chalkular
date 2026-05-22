@@ -14,11 +14,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/crashappsec/chalkular/api/chalk"
 	"github.com/crashappsec/chalkular/internal/reports"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	"github.com/crashappsec/chalkular/internal/reports/sqs/parsers"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // A Listener is an SQS listener that will listen
@@ -35,18 +34,18 @@ type Listener struct {
 	scheduler     reports.SchedulerClient
 	waitTime      time.Duration
 	visbilityTime time.Duration
+	reportParser  parsers.ChalkReportParser
 }
 
 // NewListener will construct a new Listener that will listen on the given queue URL.
 // When a message is received that contains the namespace and imageURI keys, it will
 // schedule a new artifact analysis.
-func NewListener(ctx context.Context, scheduler reports.SchedulerClient, queueURL string) (*Listener, error) {
-	sdkConfig, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return nil, err
+func NewListener(awsCfg aws.Config, scheduler reports.SchedulerClient, queueURL string, reportParser parsers.ChalkReportParser) (*Listener, error) {
+	if reportParser == nil {
+		return nil, fmt.Errorf("no chalk report parser supplied")
 	}
 
-	sqsClient := sqs.NewFromConfig(sdkConfig)
+	sqsClient := sqs.NewFromConfig(awsCfg)
 
 	return &Listener{
 		sqsClient:     sqsClient,
@@ -54,24 +53,24 @@ func NewListener(ctx context.Context, scheduler reports.SchedulerClient, queueUR
 		waitTime:      time.Second * 20,
 		visbilityTime: time.Second * 20,
 		scheduler:     scheduler,
+		reportParser:  reportParser,
 	}, nil
 }
 
 // Start will begin polling the queue for new
 // messages on the queue
 func (l *Listener) Start(ctx context.Context) error {
-	logger := log.FromContext(ctx)
+	logger := logf.FromContext(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		default:
 			result, err := l.sqsClient.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
-				QueueUrl:              aws.String(l.queueURL),
-				MaxNumberOfMessages:   10,
-				MessageAttributeNames: []string{chalk.KeyActionID},
-				WaitTimeSeconds:       int32(l.waitTime.Seconds()),
-				VisibilityTimeout:     int32(l.visbilityTime.Seconds()),
+				QueueUrl:            aws.String(l.queueURL),
+				MaxNumberOfMessages: 10,
+				WaitTimeSeconds:     int32(l.waitTime.Seconds()),
+				VisibilityTimeout:   int32(l.visbilityTime.Seconds()),
 			})
 
 			if err != nil {
@@ -86,35 +85,36 @@ func (l *Listener) Start(ctx context.Context) error {
 			}
 
 			for _, msg := range result.Messages {
-				logger.Info("received new chalk report", "message", *msg.Body, "message_attributes", msg.MessageAttributes)
+				msgLogger := logger.WithValues("attributes", msg.Attributes, "message_attributes", msg.MessageAttributes, "message_id", aws.ToString(msg.MessageId))
+				msgLogger.Info("received new queue message")
+				msgCtx := logf.IntoContext(ctx, msgLogger)
 
-				var actionID string
-				if actionIDAtrr, ok := msg.MessageAttributes[chalk.KeyActionID]; ok && actionIDAtrr.StringValue != nil {
-					actionID = *actionIDAtrr.StringValue
+				rs, err := l.reportParser(msgCtx, msg)
+				if err != nil {
+					msgLogger.Error(err, "failed to parse report from SQS message, skipping")
+					continue
 				}
 
-				logger.Info("retrieving chalk report from API", "actionID", actionID)
-				// TODO(bthuilot): get chalk report from API or S3
-				report := make(reports.ChalkReport)
+				for _, report := range rs {
+					result := l.scheduler.NewReport(ctx, report)
 
-				result := l.scheduler.NewReport(ctx, report)
-				fmt.Println("report scheduled", "acitonID", actionID)
-
-				go func() {
-					messageResult := <-result
-					if messageResult != nil {
-						logger.Error(messageResult, "pipeline creation failed for report", "actionID", actionID)
-					} else {
-						_, err := l.sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
-							QueueUrl:      aws.String(l.queueURL),
-							ReceiptHandle: msg.ReceiptHandle,
-						})
-						if err != nil {
-							logger.Error(err, "unable to remove message from queue", "actionID", actionID)
+					go func() {
+						msgLogger.Info("report scheduled, awaiting result")
+						messageResult := <-result
+						if messageResult != nil {
+							msgLogger.Error(messageResult, "pipeline creation failed for report")
+						} else {
+							_, err := l.sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+								QueueUrl:      aws.String(l.queueURL),
+								ReceiptHandle: msg.ReceiptHandle,
+							})
+							if err != nil {
+								msgLogger.Error(err, "unable to remove message from queue")
+							}
 						}
-					}
 
-				}()
+					}()
+				}
 			}
 		}
 	}

@@ -6,25 +6,24 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-package reports
+package parsers
 
 import (
 	"context"
+	"encoding/json"
 
+	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type SchedulerResult chan error
+func RawReportParser(ctx context.Context, msg sqstypes.Message) ([]chalk.Report, error) {
+	l := logf.FromContext(ctx)
+	l.Info("parsing report from message body")
 
-type SchedulerClient struct {
-	eventBus eventBus
+	report := make(chalk.Report)
+	err := json.Unmarshal([]byte(*msg.Body), &report)
+	return []chalk.Report{report}, err
 }
 
-func (c *SchedulerClient) NewReport(_ context.Context, report chalk.Report) SchedulerResult {
-	done := make(SchedulerResult, 1)
-	c.eventBus <- event{
-		Report: report,
-		Result: done,
-	}
-	return done
-}
+var _ ChalkReportParser = RawReportParser

@@ -1,7 +1,22 @@
 # Chalkular Release Notes
 <!-- https://keepachangelog.com -->
 
-# [v0.0.2](https://github.com/crashappsec/ocular/releases/tag/v0.0.2) - **May 1st, 2026**
+# [v0.0.3](https://github.com/crashappsec/chalkular/releases/tag/v0.0.3) - **May 22nd, 2026**
+
+### Added
+
+- `forEach` CEL expresion was added to `ChalkReportPolicy` resource to allow the user to spawn multiple pipelines per report
+  - The expression should return a list of values, and the policy will be evaluated for each with the value to `each`
+  
+- Added support for selecting how SQS should be parsed for a chalk report
+  - `message-body` indicates the message body of the SQS event should be parsed as a chalk report
+  - `s3-event` indicates the SQS event follows the structure of an S3 event notication, where the object contains the chalk report.
+
+### Removed
+
+- Chalk report policies are no longer evaluted per chalk mark, instead it is evaluated once per report.
+
+# [v0.0.2](https://github.com/crashappsec/chalkular/releases/tag/v0.0.2) - **May 1st, 2026**
 
 ### Added
 
@@ -18,7 +33,7 @@
 - HTTP endpoint `/chalkular/v1beta1/artifacts` removed in favor of `/api/v1beta1/report` endpoint
 
 
-# [v0.0.1](https://github.com/crashappsec/ocular/releases/tag/v0.0.1) - **February 10th, 2026**
+# [v0.0.1](https://github.com/crashappsec/chalkular/releases/tag/v0.0.1) - **February 10th, 2026**
 
 ### Added
 

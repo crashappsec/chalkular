@@ -43,10 +43,22 @@ type ChalkReportPolicySpec struct {
 }
 
 type ChalkReportPolicyExtraction struct {
+	// ForEach is a CEL expression that should return
+	// a list of values to iterate the extraction expressions over.
+	// This can be used to start multiple pipelines per chalk report.
+	// For each item in the list, the [Target], [DownloaderParams]
+	// and [ProfileParams] will be called with the variable `each`
+	// as the item in the list. i.e. if the expression returns `[1,2,3]`
+	// the target and params will be evaulated 3 times with 'each' set to
+	// 1, then 2, then 3 - generating 3 pipelines.
+	// +optional
+	ForEach *string `json:"forEach,omitempty"`
 	// Target is a CEL expression to extract the
 	// [v1beta1.Target] from the chalk report.
-	// The expression should return a string map
-	// with two keys: 'identifier' and (optionally) 'version'
+	// The expression should return a list of string maps
+	// with two keys: 'identifier' and (optionally) 'version'.
+	// The expression can also return a single map in which case it will
+	// automatically be created into a singleton list
 	// +required
 	Target string `json:"target"`
 	// DownloaderParams is a CEL expression to extract
@@ -54,13 +66,13 @@ type ChalkReportPolicyExtraction struct {
 	// apply to the downloader. The expression should
 	// return a string map.
 	// +optional
-	DownloaderParams *string `json:"downloaderParams"`
+	DownloaderParams *string `json:"downloaderParams,omitempty"`
 	// ProfileParams is a CEL expression to extract
 	// dynamic parameters from the chalk report to
 	// apply to the profile. The expression should
 	// return a string map.
 	// +optional
-	ProfileParams *string `json:"profileParams"`
+	ProfileParams *string `json:"profileParams,omitempty"`
 }
 
 // ChalkReportPolicyStatus defines the observed state of ChalkReportPolicy.
@@ -121,8 +133,4 @@ type ChalkReportPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ChalkReportPolicy `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(&ChalkReportPolicy{}, &ChalkReportPolicyList{})
 }

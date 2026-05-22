@@ -19,6 +19,9 @@ const (
 
 	// KeyChalks is the chalk report key
 	// that will contain a list of chalk marks
-	// created from the operation.
+	// created from the operation. Each item
+	// should be of type [Mark]
 	KeyChalks Key = "_CHALKS"
 )
+
+type Report = map[Key]any
