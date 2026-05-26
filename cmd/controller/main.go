@@ -76,6 +76,8 @@ func main() {
 	var reportHTTPCertPath, reportHTTPCertName, reportHTTPCertKey string
 	var secureReportHTTP bool
 	var sqsQueueURL, sqsParser string
+	var schedulerActivePipelinesLimit int
+	var schedulerMaxPipelinesPerPolicy int
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -115,6 +117,14 @@ func main() {
 		"Configure how chalk reports are parsed from SQS messages. Either \"message-body\""+
 			"(parse JSON directly from message body) or "+
 			"\"s3-event\" (parsed as S3 event notification, and S3 object is assumed to be chalk report)")
+	flag.IntVar(&schedulerActivePipelinesLimit, "active-pipelines-limit", 100,
+		"Limit the amount of active pipelines created by the scheduler. "+
+			"This is a soft limit since policies can generate more than one "+
+			"pipeline which can cause the limit to be exceeded when"+
+			" all are scheduled")
+	flag.IntVar(&schedulerMaxPipelinesPerPolicy, "max-pipelines-per-policy", 20,
+		"Set the limit to the amount of pipelines one policy can generated (max length of forEach result)",
+	)
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -213,7 +223,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	scheduler, err := reports.NewScheduler(mgr.GetClient(), cfg, policyCompiler)
+	scheduler, err := reports.NewScheduler(mgr, policyCompiler,
+		schedulerActivePipelinesLimit, schedulerMaxPipelinesPerPolicy)
 	if err != nil {
 		setupLog.Error(err, "unable to construct report scheduler")
 		os.Exit(1)

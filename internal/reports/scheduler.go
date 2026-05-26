@@ -10,6 +10,7 @@ package reports
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 
@@ -17,13 +18,18 @@ import (
 	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
 	"github.com/crashappsec/chalkular/internal/policy"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
-	"github.com/crashappsec/ocular/pkg/generated/clientset"
 	"github.com/hashicorp/go-multierror"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+)
+
+const (
+	schedulerLabel = "chalk.ocular.crashoverride.run/scheduled-by"
+	schedulerValue = "chalkular-controller"
 )
 
 type event struct {
@@ -34,25 +40,45 @@ type event struct {
 type eventBus = chan event
 
 type Scheduler struct {
-	eventBus       eventBus
-	ocularCS       *clientset.Clientset
-	mgrClient      client.Client
+	eventBus              eventBus
+	maxActivePipelines    int
+	maxPipelinesPerPolicy int
+
+	mgrClient client.Client
+
 	policyCompiler *policy.Compiler
 }
 
-func NewScheduler(mgrClient client.Client, cfg *rest.Config, policyCompiler *policy.Compiler) (*Scheduler, error) {
+func isActiveIndexer(o client.Object) []string {
+	p := o.(*ocularv1beta1.Pipeline)
+	if p.Status.StartTime != nil && p.Status.CompletionTime == nil {
+		return []string{"true"}
+	}
+	return []string{"false"}
+}
+
+func NewScheduler(mgr manager.Manager, policyCompiler *policy.Compiler, maxActivePipelines, maxPipelinesPerPolicy int) (*Scheduler, error) {
 	e := make(eventBus)
 
-	ocularCS, err := clientset.NewForConfig(cfg)
-	if err != nil {
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&ocularv1beta1.Pipeline{},
+		"status.active",
+		isActiveIndexer,
+	); err != nil {
 		return nil, err
 	}
 
+	if maxActivePipelines < 0 {
+		return nil, fmt.Errorf("invalid valid for max active pipelines, should be positive or zero for non limit got: %d", maxActivePipelines)
+	}
+
 	scheduler := &Scheduler{
-		eventBus:       e,
-		ocularCS:       ocularCS,
-		mgrClient:      mgrClient,
-		policyCompiler: policyCompiler,
+		eventBus:              e,
+		maxActivePipelines:    maxActivePipelines,
+		maxPipelinesPerPolicy: maxPipelinesPerPolicy,
+		mgrClient:             mgr.GetClient(),
+		policyCompiler:        policyCompiler,
 	}
 
 	return scheduler, nil
@@ -64,14 +90,44 @@ func (s *Scheduler) GetClient() *SchedulerClient {
 	}
 }
 
+func (s *Scheduler) countActivePipelines(ctx context.Context) (int, error) {
+	list := &ocularv1beta1.PipelineList{}
+	err := s.mgrClient.List(ctx, list,
+		client.MatchingLabels{schedulerLabel: schedulerValue},
+		client.MatchingFields{"status.active": "true"},
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list pipelines: %w", err)
+	}
+	return len(list.Items), nil
+}
+
+var ErrMaxActivePipelinesExceeded = errors.New("cannot schedule pipeline due to maximum limit exceeded")
+
 func (s *Scheduler) Start(ctx context.Context) error {
 	l := logf.FromContext(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case event := <-s.eventBus:
 			report := event.Report
+
+			if s.maxActivePipelines > 0 {
+				active, err := s.countActivePipelines(ctx)
+				if err != nil {
+					event.Result <- fmt.Errorf("unable to list active pipelines: %w", err)
+					close(event.Result)
+					continue
+				}
+				if active >= s.maxActivePipelines {
+					event.Result <- fmt.Errorf("%w: currently %d active which exceeds %d", ErrMaxActivePipelinesExceeded, active, s.maxActivePipelines)
+					close(event.Result)
+					continue
+				}
+			}
+
 			actionID, exist := report[chalk.KeyActionID]
 			actionIDStr, valid := actionID.(string)
 			if !exist || !valid {
@@ -86,9 +142,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 			}
 			var merr *multierror.Error
 			for _, pipeline := range pipelines {
-				_, err = s.ocularCS.ApiV1beta1().Pipelines(pipeline.Namespace).
-					Create(ctx, pipeline, metav1.CreateOptions{})
-				if err != nil {
+				if err = s.mgrClient.Create(ctx, pipeline); err != nil {
 					merr = multierror.Append(merr, fmt.Errorf("unable to create pipeline %s in namespace %s: %w", pipeline.Name, pipeline.Namespace, err))
 				}
 			}
@@ -149,6 +203,12 @@ func (s *Scheduler) createPipelinesForReport(ctx context.Context, actionID strin
 			policyLogger.Error(err, "failed to extract pipeline values")
 			continue
 		}
+
+		if s.maxPipelinesPerPolicy > 0 && len(values) > s.maxPipelinesPerPolicy {
+			policyLogger.Error(err, "policy generated too many pipelines")
+			continue
+		}
+
 		policyLogger.Info(fmt.Sprintf("policy generated %d values", len(values)), "values", len(values))
 		for _, vs := range values {
 			pipeline := &ocularv1beta1.Pipeline{
@@ -166,6 +226,8 @@ func (s *Scheduler) createPipelinesForReport(ctx context.Context, actionID strin
 			pipeline.Spec.DownloaderRef.Parameters = append(pipeline.Spec.DownloaderRef.Parameters, vs.DownloaderParams...)
 			pipeline.Spec.ProfileRef.Parameters = append(pipeline.Spec.ProfileRef.Parameters, vs.ProfileParams...)
 			pipeline.Spec.Target = vs.Target
+
+			pipeline.Labels[schedulerLabel] = schedulerValue
 			pipelines = append(pipelines, pipeline)
 		}
 
