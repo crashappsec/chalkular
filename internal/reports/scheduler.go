@@ -19,9 +19,10 @@ import (
 	"github.com/crashappsec/chalkular/internal/policy"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/hashicorp/go-multierror"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -45,6 +46,7 @@ type Scheduler struct {
 	maxPipelinesPerPolicy int
 
 	mgrClient client.Client
+	recorder  events.EventRecorder
 
 	policyCompiler *policy.Compiler
 }
@@ -74,11 +76,15 @@ func NewScheduler(mgr manager.Manager, policyCompiler *policy.Compiler, maxActiv
 	}
 
 	scheduler := &Scheduler{
-		eventBus:              e,
+		eventBus: e,
+
 		maxActivePipelines:    maxActivePipelines,
 		maxPipelinesPerPolicy: maxPipelinesPerPolicy,
-		mgrClient:             mgr.GetClient(),
-		policyCompiler:        policyCompiler,
+
+		policyCompiler: policyCompiler,
+
+		mgrClient: mgr.GetClient(),
+		recorder:  mgr.GetEventRecorder("chalkular-report-scheduler"),
 	}
 
 	return scheduler, nil
@@ -147,7 +153,8 @@ func (s *Scheduler) Start(ctx context.Context) error {
 				}
 			}
 
-			event.Result <- merr.ErrorOrNil()
+			err = merr.ErrorOrNil()
+			event.Result <- err
 			close(event.Result)
 		}
 	}
@@ -189,6 +196,11 @@ func (s *Scheduler) createPipelinesForReport(ctx context.Context, actionID strin
 		matches, err := p.Matches(report)
 		if err != nil {
 			policyLogger.Error(err, "failed to run match expresssion, skipping")
+			s.recorder.Eventf(&reportPolicy, nil,
+				corev1.EventTypeWarning,
+				"PolicyEvalFailed",
+				"MatchConditionEval",
+				"failed to evaluate match condition for action %s: %s", actionID, err)
 			continue
 		}
 		if !matches {
@@ -201,11 +213,21 @@ func (s *Scheduler) createPipelinesForReport(ctx context.Context, actionID strin
 		values, err := p.Extract(report)
 		if err != nil {
 			policyLogger.Error(err, "failed to extract pipeline values")
+			s.recorder.Eventf(&reportPolicy, nil,
+				corev1.EventTypeWarning,
+				"PolicyExtractFailed",
+				"ExtractPipelineValues",
+				"failed to extract pipeline values for action %s: %s", actionID, err)
 			continue
 		}
 
 		if s.maxPipelinesPerPolicy > 0 && len(values) > s.maxPipelinesPerPolicy {
 			policyLogger.Error(err, "policy generated too many pipelines")
+			s.recorder.Eventf(&reportPolicy, nil,
+				corev1.EventTypeWarning,
+				"TooManyPipelinesGenerated",
+				"ExtractPipelineValues",
+				"more than %d pipelines were generated for action %s: exceededs limit of %d", len(values), actionID, s.maxPipelinesPerPolicy)
 			continue
 		}
 

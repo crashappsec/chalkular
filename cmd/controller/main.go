@@ -223,8 +223,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	scheduler, err := reports.NewScheduler(mgr, policyCompiler,
-		schedulerActivePipelinesLimit, schedulerMaxPipelinesPerPolicy)
+	scheduler, err := reports.NewScheduler(mgr,
+		policyCompiler,
+		schedulerActivePipelinesLimit,
+		schedulerMaxPipelinesPerPolicy)
 	if err != nil {
 		setupLog.Error(err, "unable to construct report scheduler")
 		os.Exit(1)
