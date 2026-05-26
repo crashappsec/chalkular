@@ -50,8 +50,8 @@ func NewListener(awsCfg aws.Config, scheduler reports.SchedulerClient, queueURL 
 	return &Listener{
 		sqsClient:     sqsClient,
 		queueURL:      queueURL,
-		waitTime:      time.Second * 20,
-		visbilityTime: time.Second * 20,
+		waitTime:      time.Second * 30,
+		visbilityTime: time.Minute * 2,
 		scheduler:     scheduler,
 		reportParser:  reportParser,
 	}, nil

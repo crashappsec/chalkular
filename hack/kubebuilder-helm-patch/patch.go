@@ -56,6 +56,13 @@ var replacements = map[string][]replacement{
 		{
 			Pattern: regexp.MustCompile(`(?m)^([ ]+)(- args:)`),
 			Replacement: "${1}- args:\n" +
+				// Scheduler Args
+				"${1}  {{- if .Values.intake.rejectReportPipelineThreshold }}\n" +
+				"${1}  - --reject-report-pipeline-threshold={{ .Values.intake.rejectReportPipelineThreshold }}\n" +
+				"${1}  {{- end }}\n" +
+				"${1}  {{- if .Values.intake.maxPipelinesPerPolicy }}\n" +
+				"${1}  - --max-pipelines-per-policy={{ .Values.intake.maxPipelinesPerPolicy }}\n" +
+				"${1}  {{- end }}\n" +
 				// SQS args
 				"${1}  {{- if .Values.intake.sqs.enable}}\n" +
 				"${1}  - --sqs-queue-url={{ .Values.intake.sqs.queueURL }}\n" +

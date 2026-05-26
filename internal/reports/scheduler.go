@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"time"
 
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
@@ -41,9 +42,9 @@ type event struct {
 type eventBus = chan event
 
 type Scheduler struct {
-	eventBus              eventBus
-	maxActivePipelines    int
-	maxPipelinesPerPolicy int
+	eventBus                eventBus
+	rejectPipelineThreshold int
+	maxPipelinesPerPolicy   int
 
 	mgrClient client.Client
 	recorder  events.EventRecorder
@@ -59,7 +60,7 @@ func isActiveIndexer(o client.Object) []string {
 	return []string{"false"}
 }
 
-func NewScheduler(mgr manager.Manager, policyCompiler *policy.Compiler, maxActivePipelines, maxPipelinesPerPolicy int) (*Scheduler, error) {
+func NewScheduler(mgr manager.Manager, policyCompiler *policy.Compiler, rejectPipelineThreshold, maxPipelinesPerPolicy int) (*Scheduler, error) {
 	e := make(eventBus)
 
 	if err := mgr.GetFieldIndexer().IndexField(
@@ -71,15 +72,11 @@ func NewScheduler(mgr manager.Manager, policyCompiler *policy.Compiler, maxActiv
 		return nil, err
 	}
 
-	if maxActivePipelines < 0 {
-		return nil, fmt.Errorf("invalid valid for max active pipelines, should be positive or zero for non limit got: %d", maxActivePipelines)
-	}
-
 	scheduler := &Scheduler{
 		eventBus: e,
 
-		maxActivePipelines:    maxActivePipelines,
-		maxPipelinesPerPolicy: maxPipelinesPerPolicy,
+		maxPipelinesPerPolicy:   maxPipelinesPerPolicy,
+		rejectPipelineThreshold: rejectPipelineThreshold,
 
 		policyCompiler: policyCompiler,
 
@@ -108,7 +105,7 @@ func (s *Scheduler) countActivePipelines(ctx context.Context) (int, error) {
 	return len(list.Items), nil
 }
 
-var ErrMaxActivePipelinesExceeded = errors.New("cannot schedule pipeline due to maximum limit exceeded")
+var ErrPipelineThreshold = errors.New("rejecting report, active pipeline count at or above threshold")
 
 func (s *Scheduler) Start(ctx context.Context) error {
 	l := logf.FromContext(ctx)
@@ -118,21 +115,8 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case event := <-s.eventBus:
+			l.Info("chalk report received, scheduling")
 			report := event.Report
-
-			if s.maxActivePipelines > 0 {
-				active, err := s.countActivePipelines(ctx)
-				if err != nil {
-					event.Result <- fmt.Errorf("unable to list active pipelines: %w", err)
-					close(event.Result)
-					continue
-				}
-				if active >= s.maxActivePipelines {
-					event.Result <- fmt.Errorf("%w: currently %d active which exceeds %d", ErrMaxActivePipelinesExceeded, active, s.maxActivePipelines)
-					close(event.Result)
-					continue
-				}
-			}
 
 			actionID, exist := report[chalk.KeyActionID]
 			actionIDStr, valid := actionID.(string)
@@ -142,13 +126,33 @@ func (s *Scheduler) Start(ctx context.Context) error {
 				close(event.Result)
 				continue
 			}
-			pipelines, err := s.createPipelinesForReport(ctx, actionIDStr, report)
+			reportL := l.WithValues("action-id", actionID)
+			reportCtx := logf.IntoContext(ctx, reportL)
+
+			if s.rejectPipelineThreshold > 0 {
+				active, err := s.countActivePipelines(reportCtx)
+				if err != nil {
+					event.Result <- fmt.Errorf("unable to list active pipelines: %w", err)
+					close(event.Result)
+					continue
+				}
+				if active >= s.rejectPipelineThreshold {
+					reportL.Info("rejecting report, pipeline threshold hit")
+					event.Result <- fmt.Errorf("%w: currently %d active which exceeds threshold of %d, rejecting",
+						ErrPipelineThreshold, active, s.rejectPipelineThreshold)
+					close(event.Result)
+					continue
+				}
+			}
+
+			pipelines, err := s.createPipelinesForReport(reportCtx, actionIDStr, report)
 			if err != nil {
-				l.Error(err, "failures reported for pipelines created from report", "action-id", actionIDStr)
+				reportL.Error(err, "failures reported for pipelines created from report", "action-id", actionIDStr)
 			}
 			var merr *multierror.Error
 			for _, pipeline := range pipelines {
-				if err = s.mgrClient.Create(ctx, pipeline); err != nil {
+				if err = s.mgrClient.Create(reportCtx, pipeline); err != nil {
+					reportL.Error(err, "unable to create pipeline", "pipeline-name", pipeline.Name, "pipeline-namespace", pipeline.Namespace)
 					merr = multierror.Append(merr, fmt.Errorf("unable to create pipeline %s in namespace %s: %w", pipeline.Name, pipeline.Namespace, err))
 				}
 			}
@@ -156,6 +160,9 @@ func (s *Scheduler) Start(ctx context.Context) error {
 			err = merr.ErrorOrNil()
 			event.Result <- err
 			close(event.Result)
+			// if we get here lets rest a second to not
+			// overwhelm the api server
+			time.Sleep(time.Second)
 		}
 	}
 }

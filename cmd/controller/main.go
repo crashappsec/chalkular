@@ -76,7 +76,7 @@ func main() {
 	var reportHTTPCertPath, reportHTTPCertName, reportHTTPCertKey string
 	var secureReportHTTP bool
 	var sqsQueueURL, sqsParser string
-	var schedulerActivePipelinesLimit int
+	var rejectReportPipelineThreshold int
 	var schedulerMaxPipelinesPerPolicy int
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -117,13 +117,14 @@ func main() {
 		"Configure how chalk reports are parsed from SQS messages. Either \"message-body\""+
 			"(parse JSON directly from message body) or "+
 			"\"s3-event\" (parsed as S3 event notification, and S3 object is assumed to be chalk report)")
-	flag.IntVar(&schedulerActivePipelinesLimit, "active-pipelines-limit", 100,
-		"Limit the amount of active pipelines created by the scheduler. "+
-			"This is a soft limit since policies can generate more than one "+
-			"pipeline which can cause the limit to be exceeded when"+
-			" all are scheduled")
+	flag.IntVar(&rejectReportPipelineThreshold, "reject-report-pipeline-threshold", 100,
+		"The amount of pipelines at which the scheduler will reject new reports. "+
+			"This is a soft limit since there are cases where the informer cache will "+
+			"be out of sync with the cluster and the amount of scheduled pipelines will "+
+			"be greater than the threshold. A negative number or 0 indicates no threshold should exist.")
 	flag.IntVar(&schedulerMaxPipelinesPerPolicy, "max-pipelines-per-policy", 20,
-		"Set the limit to the amount of pipelines one policy can generated (max length of forEach result)",
+		"Set the limit to the amount of pipelines one policy can generated (max length of forEach result)."+
+			"A negative number or 0 indicates no maximum should exist.",
 	)
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -225,7 +226,7 @@ func main() {
 
 	scheduler, err := reports.NewScheduler(mgr,
 		policyCompiler,
-		schedulerActivePipelinesLimit,
+		rejectReportPipelineThreshold,
 		schedulerMaxPipelinesPerPolicy)
 	if err != nil {
 		setupLog.Error(err, "unable to construct report scheduler")
