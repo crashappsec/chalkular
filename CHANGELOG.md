@@ -1,6 +1,13 @@
 # Chalkular Release Notes
 <!-- https://keepachangelog.com -->
 
+# [v0.0.4](https://github.com/crashappsec/chalkular/releases/tag/v0.0.4) - **May 27th, 2026**
+
+### Added
+
+- Specify the max amount of pipelines that can be generated from a report via `--max-pipelines-per-policy`
+- Specify a threshold of active pipelines to begin rejecting new reports from being scheduled via `--reject-report-pipeline-threshold`
+
 # [v0.0.3](https://github.com/crashappsec/chalkular/releases/tag/v0.0.3) - **May 22nd, 2026**
 
 ### Added
