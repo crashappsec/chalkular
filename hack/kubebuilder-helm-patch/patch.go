@@ -56,6 +56,13 @@ var replacements = map[string][]replacement{
 		{
 			Pattern: regexp.MustCompile(`(?m)^([ ]+)(- args:)`),
 			Replacement: "${1}- args:\n" +
+				// Scheduler Args
+				"${1}  {{- if .Values.intake.rejectReportPipelineThreshold }}\n" +
+				"${1}  - --reject-report-pipeline-threshold={{ .Values.intake.rejectReportPipelineThreshold }}\n" +
+				"${1}  {{- end }}\n" +
+				"${1}  {{- if .Values.intake.maxPipelinesPerPolicy }}\n" +
+				"${1}  - --max-pipelines-per-policy={{ .Values.intake.maxPipelinesPerPolicy }}\n" +
+				"${1}  {{- end }}\n" +
 				// SQS args
 				"${1}  {{- if .Values.intake.sqs.enable}}\n" +
 				"${1}  - --sqs-queue-url={{ .Values.intake.sqs.queueURL }}\n" +
@@ -94,6 +101,10 @@ var replacements = map[string][]replacement{
 				"${1}  {{- if .Values.manager.volumes }}\n" +
 				"${1}  {{- toYaml .Values.manager.volumes | nindent 6}}\n" +
 				"${1}  {{- end}}",
+		},
+		{
+			Pattern:     regexp.MustCompile(`\.Values`),
+			Replacement: "$$values",
 		},
 	},
 	downloaderPath: {
@@ -152,17 +163,33 @@ var replacements = map[string][]replacement{
 	},
 }
 
+// paddings is a map from file name
+// to a [textPadding] to apply
+var paddings = map[string]textPadding{
+	managerPath: {
+		Prefix: `
+{{- $values := (tpl (.Values | toYaml) $) | fromYaml }}
+{{- $values := (tpl ($values | toYaml) $) | fromYaml }}
+---
+`,
+	},
+}
+
 //go:embed Chart.yaml.template
 var chartTmpl string
 
-func patchHelmChart(req *external.PluginRequest) (external.PluginResponse, error) {
-	resp := external.PluginResponse{
+func patchHelmChart(req *external.PluginRequest) (*external.PluginResponse, error) {
+	resp := &external.PluginResponse{
 		APIVersion: req.APIVersion,
 		Command:    req.Command,
 		Universe:   make(map[string]string),
 	}
 
-	if err := applyReplacements(req, resp.Universe); err != nil {
+	if err := applyReplacements(req, resp); err != nil {
+		return resp, err
+	}
+
+	if err := applyPaddings(req, resp); err != nil {
 		return resp, err
 	}
 
@@ -187,36 +214,6 @@ func patchHelmChart(req *external.PluginRequest) (external.PluginResponse, error
 	return resp, nil
 }
 
-type replacement struct {
-	Pattern     *regexp.Regexp
-	Replacement string
-}
-
-func (r replacement) apply(content string) (string, error) {
-	if !r.Pattern.MatchString(content) {
-		return content, fmt.Errorf("patch %q: pattern did not match", r.Pattern.String())
-	}
-	return r.Pattern.ReplaceAllString(content, r.Replacement), nil
-}
-
-func applyReplacements(req *external.PluginRequest, u map[string]string) error {
-	for path, rs := range replacements {
-		content, ok := req.Universe[path]
-		if !ok {
-			return fmt.Errorf("file not found in universe: %s", u[path])
-		}
-		for _, replace := range rs {
-			var err error
-			content, err = replace.apply(content)
-			if err != nil {
-				return err
-			}
-		}
-		u[path] = content
-	}
-	return nil
-}
-
 func templateContent(name, content string, values map[string]string) (string, error) {
 	t, err := template.New(name).Parse(content)
 	if err != nil {
@@ -229,4 +226,73 @@ func templateContent(name, content string, values map[string]string) (string, er
 	}
 
 	return builder.String(), nil
+}
+
+type replacement struct {
+	Pattern     *regexp.Regexp
+	Replacement string
+}
+
+func (r replacement) apply(content string) (string, error) {
+	if !r.Pattern.MatchString(content) {
+		return content, fmt.Errorf("patch %q: pattern did not match", r.Pattern.String())
+	}
+	return r.Pattern.ReplaceAllString(content, r.Replacement), nil
+}
+
+func applyReplacements(req *external.PluginRequest, resp *external.PluginResponse) error {
+	for path, rs := range replacements {
+		content, err := getFileContents(path, req, resp)
+		if err != nil {
+			return err
+		}
+		for _, replace := range rs {
+			var err error
+			content, err = replace.apply(content)
+			if err != nil {
+				return err
+			}
+		}
+		resp.Universe[path] = content
+	}
+	return nil
+}
+
+// textPadding adds a prefix and/or
+// suffix to a file
+type textPadding struct {
+	Prefix string
+	Suffix string
+}
+
+func (t textPadding) apply(content string) string {
+	return t.Prefix + content + t.Suffix
+}
+
+func applyPaddings(req *external.PluginRequest, resp *external.PluginResponse) error {
+	for path, padding := range paddings {
+		content, err := getFileContents(path, req, resp)
+		if err != nil {
+			return err
+		}
+
+		padded := padding.apply(content)
+		resp.Universe[path] = padded
+	}
+	return nil
+}
+
+func getFileContents(path string, req *external.PluginRequest, resp *external.PluginResponse) (string, error) {
+	// this is done so that if an existing applyX function
+	// ran before this, we use the new updated contents
+	// of the file instead of the one in the request
+	if path, ok := resp.Universe[path]; ok {
+		return path, nil
+	}
+
+	if path, ok := req.Universe[path]; ok {
+		return path, nil
+	}
+
+	return "", fmt.Errorf("file does not exist in universe: %s", path)
 }

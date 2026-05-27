@@ -39,7 +39,7 @@ func main() {
 
 	log.Println("parsed plugin request")
 
-	response := external.PluginResponse{
+	response := &external.PluginResponse{
 		APIVersion: pluginRequest.APIVersion,
 		Command:    pluginRequest.Command,
 		Universe:   make(map[string]string),

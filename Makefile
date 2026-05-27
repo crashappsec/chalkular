@@ -227,7 +227,7 @@ build-helm: kubebuilder helmpatch-plugin yq ## Generate a helm-chart using kubeb
 	@mkdir -p dist
 	@EXTERNAL_PLUGINS_PATH="$(LOCALBIN)" "$(KUBEBUILDER)" edit --plugins=helm.kubebuilder.io/v2-alpha,$(HELMPATCH_NAME)/$(HELMPATCH_VERSION)
 	@"$(YQ)" -ie '.manager.image = {"repository": strenv(CHALKULAR_CONTROLLER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' dist/chart/values.yaml
-	@"$(YQ)" -ie '.intake = {"http": {"enable": false, "port": 7070, "secure": true}, "sqs": {"enable": false, "queueURL": "", "parser": "s3-event"}}' dist/chart/values.yaml
+	@"$(YQ)" -ie '.intake = {"http": {"enable": false, "port": 7070, "secure": true}, "sqs": {"enable": false, "queueURL": "", "parser": "s3-event"}, "maxPipelinesPerPolicy": 10, "rejectReportPipelineThreshold": 100}' dist/chart/values.yaml
 	@"$(YQ)" -ie '(.intake | key) head_comment="Configure intake methods for chalk reports"' dist/chart/values.yaml
 	@"$(YQ)" -ie '.downloader.image =  {"repository": strenv(CHALKULAR_DOWNLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' dist/chart/values.yaml
 	@"$(YQ)" -ie '(.downloader | key) head_comment="Configure downloader image"' dist/chart/values.yaml

@@ -57,6 +57,7 @@ func (c CompiledPolicy) Extract(report map[string]any) ([]PipelineValues, error)
 		if err != nil {
 			return nil, fmt.Errorf("failed to evaluate for each expression: %w", err)
 		}
+
 		for _, e := range each {
 			activations = append(activations, map[string]any{
 				"report": report,
