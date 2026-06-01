@@ -90,16 +90,6 @@ type ChalkReportPolicyStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// ProfileValid will be true if the referenced profile in the pipeline
-	// template is valid, and false otherwise
-	// +optional
-	ProfileValid bool `json:"profileValid"`
-
-	// DownloaderValid will be true if the referenced downloader in the pipeline
-	// template is valid, and false otherwise
-	// +optional
-	DownloaderValid bool `json:"downloaderValid"`
 }
 
 // +kubebuilder:object:root=true

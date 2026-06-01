@@ -181,13 +181,13 @@ func (s *Scheduler) createPipelinesForReport(ctx context.Context, actionID strin
 	var merr *multierror.Error
 	for _, reportPolicy := range policies.Items {
 		policyLogger := l.WithValues("policy", reportPolicy.Name, "namespace", reportPolicy.Namespace)
-		if !reportPolicy.Status.ProfileValid {
-			policyLogger.Info("skipping policy, profile unavailable")
-			continue
+
+		if err := s.isDownloaderValid(ctx, &reportPolicy); err != nil {
+			policyLogger.Info("skipping policy, unable to validate downloader: %w", err)
 		}
-		if !reportPolicy.Status.DownloaderValid {
-			policyLogger.Info("skipping policy, downloader unavailable")
-			continue
+
+		if err := s.isProfileValid(ctx, &reportPolicy); err != nil {
+			policyLogger.Info("skipping policy, unable to validate profile: %w", err)
 		}
 
 		if !meta.IsStatusConditionTrue(reportPolicy.Status.Conditions, "Ready") {
@@ -264,4 +264,28 @@ func (s *Scheduler) createPipelinesForReport(ctx context.Context, actionID strin
 
 	l.Info(fmt.Sprintf("generated %d pipelines for chalk report", len(pipelines)), "pipelines", len(pipelines))
 	return pipelines, merr.ErrorOrNil()
+}
+
+func (s *Scheduler) isProfileValid(ctx context.Context, reportPolicy *chalkularv1beta1.ChalkReportPolicy) error {
+	found := &ocularv1beta1.Profile{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: reportPolicy.Namespace,
+			Name:      reportPolicy.Spec.PipelineTemplate.Spec.ProfileRef.Name,
+		},
+	}
+	return s.mgrClient.Get(ctx, client.ObjectKey{Namespace: reportPolicy.Namespace, Name: reportPolicy.Spec.PipelineTemplate.Spec.ProfileRef.Name}, found)
+}
+
+func (s *Scheduler) isDownloaderValid(ctx context.Context, reportPolicy *chalkularv1beta1.ChalkReportPolicy) error {
+	downloaderRef := reportPolicy.Spec.PipelineTemplate.Spec.DownloaderRef
+	switch downloaderRef.Kind {
+	case "", "Downloader":
+		found := &ocularv1beta1.Downloader{}
+		return s.mgrClient.Get(ctx, client.ObjectKey{Namespace: reportPolicy.Namespace, Name: reportPolicy.Spec.PipelineTemplate.Spec.DownloaderRef.Name}, found)
+	case "ClusterDownloader":
+		found := &ocularv1beta1.ClusterDownloader{}
+		return s.mgrClient.Get(ctx, client.ObjectKey{Name: downloaderRef.Name}, found)
+	default:
+		return fmt.Errorf("unknown downloader kind: %s", downloaderRef.Kind)
+	}
 }

@@ -13,7 +13,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,15 +37,6 @@ var _ = Describe("ChalkReportPolicy Controller", Ordered, func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default",
-		}
-
-		profileNamespacedName := types.NamespacedName{
-			Name:      profileName,
-			Namespace: "default",
-		}
-		downloaderNamespacedName := types.NamespacedName{
-			Name:      downloaderName,
 			Namespace: "default",
 		}
 
@@ -138,74 +128,6 @@ var _ = Describe("ChalkReportPolicy Controller", Ordered, func() {
 			resource := &chalkularv1beta1.ChalkReportPolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resource.Status.ProfileValid).To(BeFalse())
-			Expect(resource.Status.DownloaderValid).To(BeFalse())
-		})
-		It("should set the downloader and profile status to true when available", func() {
-			By("Creating the profile and downloader, then reconciling the report policy")
-			profile := &ocularv1beta1.Profile{}
-			downloader := &ocularv1beta1.Downloader{}
-			err := k8sClient.Get(ctx, profileNamespacedName, profile)
-			if err != nil && errors.IsNotFound(err) {
-				profile = &ocularv1beta1.Profile{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      profileName,
-						Namespace: "default",
-					},
-					Spec: ocularv1beta1.ProfileSpec{
-						Containers: []ocularv1beta1.ConditionalContainer{
-							{
-								Container: v1.Container{
-									Name:  "my-scanner",
-									Image: "my-scanner:latest",
-								},
-							},
-						},
-					},
-				}
-				Expect(k8sClient.Create(ctx, profile)).To(Succeed())
-				err = nil
-			}
-			Expect(err).NotTo(HaveOccurred())
-
-			err = k8sClient.Get(ctx, downloaderNamespacedName, downloader)
-			if err != nil && errors.IsNotFound(err) {
-				downloader = &ocularv1beta1.Downloader{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      downloaderName,
-						Namespace: "default",
-					},
-					Spec: ocularv1beta1.DownloaderSpec{
-						Container: v1.Container{
-							Name:  "my-downloader",
-							Image: "my-downloader:latest",
-						},
-					},
-				}
-				Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
-				err = nil
-			}
-			Expect(err).NotTo(HaveOccurred())
-
-			controllerReconciler := &ChalkReportPolicyReconciler{
-				Client:         k8sClient,
-				Scheme:         k8sClient.Scheme(),
-				PolicyCompiler: policyCompiler,
-			}
-
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			resource := &chalkularv1beta1.ChalkReportPolicy{}
-			err = k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resource.Status.ProfileValid).To(BeTrue())
-			Expect(resource.Status.DownloaderValid).To(BeTrue())
-
-			Expect(k8sClient.Delete(ctx, profile)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, downloader)).To(Succeed())
 		})
 
 		It("should compile the policy and store it in the cache", func() {
