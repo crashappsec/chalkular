@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"os"
 	"strings"
@@ -32,6 +33,13 @@ var (
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
+
+// artifactManifest is a [v1.Mainfiest] but
+// additionally with an artifact type
+type artifactManifest struct {
+	v1.Manifest  `json:",inline"`
+	ArtifactType string `json:"artifactType,omitempty"`
+}
 
 func main() {
 	opts := zap.Options{}
@@ -104,28 +112,43 @@ func main() {
 		os.Exit(1)
 	}
 
-	mediaType, err := img.MediaType()
+	var manifest artifactManifest
+	rawManifest, err := img.RawManifest()
 	if err != nil {
-		l.Error(err, "unable to determine media type for image", "image", imageRef)
+		l.Error(err, "unable to retieve image manifest", "image", imageRef)
+		os.Exit(1)
+	}
+
+	if err := json.Unmarshal(rawManifest, &manifest); err != nil {
+		l.Error(err, "invalid JSON for image manifest")
+		os.Exit(1)
+	}
+
+	if manifest.MediaType != "application/vnd.oci.image.manifest.v1+json" {
+		l.Error(err, "unsupported OCI media type given, "+
+			"only 'application/vnd.oci.image.manifest.v1+json' is supported currently",
+			"mediaType", manifest.MediaType)
 		os.Exit(1)
 	}
 
 	var downloadErr error
-	switch mediaType {
-	case // standard docker images
-		"application/vnd.oci.image.index.v1+json",
-		"application/vnd.oci.image.manifest.v1+json":
+	// if artifact type is set, we download based on that
+	switch manifest.ArtifactType {
+	// Custom docker "build context" artifact type
+	// is a tar.gz of context available to docker at build time
+	case "application/vnd.crashoverride.chalk.build-context.v1":
+		downloadErr = downloaders.DownloadBuildContext(ctx, ref, img, os.Getenv("OCULAR_TARGET_DIR"))
+	// standard docker images wont have artifact type
+	// so we can default to normal image
+	default:
 		downloadErr = downloaders.DownloadDockerImage(ctx, ref, img, "./target.tar")
-	case // custom git upload
-		"application/git.chalk.v1beta+tgz":
-		// TODO(bryce): handle custom git upload
 	}
 
 	if downloadErr != nil {
-		l.Error(downloadErr, "unable to download image", "image", imageRef, "mediaType", mediaType)
+		l.Error(downloadErr, "unable to download image", "image", imageRef, "artifactType", manifest.ArtifactType)
 		os.Exit(1)
 	}
 
-	l.Info("download complete")
+	l.Info("download complete", "artifactType", manifest.ArtifactType, "mediaType", manifest.MediaType)
 
 }
