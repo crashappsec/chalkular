@@ -15,4 +15,7 @@ spec:
     - name: S3_REGION
       default: "us-east-1"
       description: "AWS Region to use"
+    - name: S3_PREFIX
+      default: ""
+      description: "a prefix to append to all objects created"
   volumes: []

@@ -47,9 +47,9 @@ func main() {
 
 	ctx := ctrl.LoggerInto(context.Background(), l)
 
-	bucketName := os.Getenv("OCULAR_PARAM_BUCKET")
-	region := os.Getenv("OCULAR_PARAM_REGION")
-	prefix := os.Getenv("OCULAR_PARAM_PREFIX")
+	bucketName := os.Getenv("OCULAR_PARAM_S3_BUCKET")
+	region := os.Getenv("OCULAR_PARAM_S3_REGION")
+	prefix := os.Getenv("OCULAR_PARAM_S3_PREFIX")
 
 	var files []string
 	for i, arg := range os.Args {
