@@ -24,9 +24,8 @@ import (
 )
 
 type Server struct {
-	opts            Options
-	engine          *gin.Engine
-	schedulerClient *reports.SchedulerClient
+	opts   Options
+	engine *gin.Engine
 }
 
 type Options struct {
@@ -40,7 +39,7 @@ type Options struct {
 	DevelopmentMode bool
 }
 
-func NewServer(config *rest.Config, httpClient *http.Client, client *reports.SchedulerClient, opts Options) (*Server, error) {
+func NewServer(config *rest.Config, httpClient *http.Client, client reports.SchedulerClient, opts Options) (*Server, error) {
 	if opts.DevelopmentMode {
 		gin.SetMode(gin.DebugMode)
 	} else {
@@ -52,8 +51,7 @@ func NewServer(config *rest.Config, httpClient *http.Client, client *reports.Sch
 	engine.Use(gin.Logger(), gin.Recovery())
 
 	s := &Server{
-		opts:            opts,
-		schedulerClient: client,
+		opts: opts,
 	}
 
 	authN, authZ, err := createAuthClients(config, httpClient)
@@ -65,7 +63,7 @@ func NewServer(config *rest.Config, httpClient *http.Client, client *reports.Sch
 
 	apiV1beta1 := engine.Group("/api/v1beta1", authorizationMiddleware(authN, authZ))
 	{
-		apiV1beta1.POST("/report", scheduleReport(s.schedulerClient))
+		apiV1beta1.POST("/report", scheduleReport(client))
 	}
 
 	s.engine = engine

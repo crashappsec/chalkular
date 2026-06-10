@@ -16,15 +16,27 @@ import (
 
 type SchedulerResult chan error
 
-type SchedulerClient struct {
+type SchedulerClient interface {
+	Enqueue(context.Context, []chalk.Report) SchedulerResult
+}
+
+type schedulerClient struct {
 	eventBus eventBus
 }
 
-func (c *SchedulerClient) NewReport(_ context.Context, report chalk.Report) SchedulerResult {
+type event struct {
+	Reports []chalk.Report
+	Result  SchedulerResult
+}
+
+type eventBus = chan event
+
+func (c *schedulerClient) Enqueue(_ context.Context, reports []chalk.Report) SchedulerResult {
 	done := make(SchedulerResult, 1)
 	c.eventBus <- event{
-		Report: report,
-		Result: done,
+		Reports: reports,
+		Result:  done,
 	}
 	return done
+
 }
