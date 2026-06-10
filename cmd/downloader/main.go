@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"os"
+	"slices"
 	"strings"
 
 	ecr "github.com/awslabs/amazon-ecr-credential-helper/ecr-login"
@@ -47,7 +48,7 @@ func main() {
 	flag.Parse()
 
 	l := zap.New(zap.UseFlagOptions(&opts)).
-		WithValues("version", version, "buildTime", buildTime, "gitCommit", gitCommit)
+		WithValues("version", version, "build-time", buildTime, "git-commit", gitCommit)
 	ctrl.SetLogger(l)
 
 	ctx := ctrl.LoggerInto(context.Background(), l)
@@ -124,10 +125,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if manifest.MediaType != "application/vnd.oci.image.manifest.v1+json" {
-		l.Error(err, "unsupported OCI media type given, "+
-			"only 'application/vnd.oci.image.manifest.v1+json' is supported currently",
-			"mediaType", manifest.MediaType)
+	supportedMediaTypes := []string{
+		"application/vnd.oci.image.manifest.v1+json",
+		"application/vnd.docker.distribution.manifest.v2+json",
+	}
+	if !slices.Contains(supportedMediaTypes, string(manifest.MediaType)) {
+		l.Error(err, "unsupported OCI media type given",
+			"media-type", manifest.MediaType, "supported-media-types", supportedMediaTypes)
 		os.Exit(1)
 	}
 
@@ -145,10 +149,10 @@ func main() {
 	}
 
 	if downloadErr != nil {
-		l.Error(downloadErr, "unable to download image", "image", imageRef, "artifactType", manifest.ArtifactType)
+		l.Error(downloadErr, "unable to download image", "image", imageRef, "artifact-type", manifest.ArtifactType)
 		os.Exit(1)
 	}
 
-	l.Info("download complete", "artifactType", manifest.ArtifactType, "mediaType", manifest.MediaType)
+	l.Info("download complete", "artifact-type", manifest.ArtifactType, "media-type", manifest.MediaType)
 
 }

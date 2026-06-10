@@ -18,4 +18,13 @@ spec:
     - name: S3_PREFIX
       default: ""
       description: "a prefix to append to all objects created"
+    - name: WORKSPACE_ID
+      default: ""
+      description: "The workspace ID that the report belongs to"
+    - name: ACTION_ID
+      default: ""
+      description: "The action ID of the report"
+    - name: METADATA_ID
+      default: ""
+      description: "The metadata ID of the resource scanned"
   volumes: []

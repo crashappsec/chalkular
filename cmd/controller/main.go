@@ -16,11 +16,12 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/crashappsec/chalkular/internal/policy"
 	"github.com/crashappsec/chalkular/internal/reports"
 	"github.com/crashappsec/chalkular/internal/reports/httpserver"
-	"github.com/crashappsec/chalkular/internal/reports/sqs"
-	"github.com/crashappsec/chalkular/internal/reports/sqs/parsers"
+	sqsReports "github.com/crashappsec/chalkular/internal/reports/sqs"
 	"github.com/crashappsec/chalkular/internal/utils"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 
@@ -48,7 +49,7 @@ var (
 	gitCommit = "unknown"
 
 	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup").WithValues("version", version, "buildTime", buildTime, "gitCommit", gitCommit)
+	setupLog = ctrl.Log.WithName("setup").WithValues("version", version, "build-time", buildTime, "git-commit", gitCommit)
 )
 
 func init() {
@@ -131,7 +132,7 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)).
-		WithValues("version", version, "buildTime", buildTime, "gitCommit", gitCommit))
+		WithValues("version", version, "build-time", buildTime, "git-commit", gitCommit))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -321,22 +322,28 @@ func main() {
 	}
 }
 
-func configureSQSListener(cfg aws.Config, sc *reports.SchedulerClient, q, p string) (*sqs.Listener, error) {
+func configureSQSListener(cfg aws.Config, sc reports.SchedulerClient, q, p string) (*sqsReports.Listener, error) {
 	setupLog.Info("configuring SQS parser", "parser-name", p)
 
-	var parser parsers.ChalkReportParser
+	var parser sqsReports.ChalkReportParser
 	switch p {
 	case "s3-event":
-		parser = parsers.S3EventReportParser(cfg)
+		s3client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+			if os.Getenv("AWS_S3_USE_PATH_STYLE") != "" {
+				o.UsePathStyle = true
+			}
+		})
+		parser = sqsReports.S3EventReportParser(s3client)
 	case "message-body":
-		parser = parsers.RawReportParser
+		parser = sqsReports.RawReportParser
 	case "":
 		return nil, fmt.Errorf("SQS parser must be supplied via --sqs-parser")
 	default:
 		return nil, fmt.Errorf("unknown SQS parser %s", p)
 	}
 
-	reportSQSListener, err := sqs.NewListener(cfg, *sc, q, parser)
+	sqsClient := sqs.NewFromConfig(cfg)
+	reportSQSListener, err := sqsReports.NewListener(sqsClient, sc, q, parser)
 	if err != nil {
 		setupLog.Error(err, "unable to construct SQS listener")
 		return nil, err

@@ -25,7 +25,7 @@ import (
 
 func ExtractChalkFromImage(ctx context.Context, ref name.Reference, img v1.Image) error {
 	metadataPath := path.Clean(path.Join(os.Getenv(v1beta1.EnvVarMetadataDir), chalkFileName))
-	l := logf.FromContext(ctx).WithValues("metadataPath", metadataPath, "image", ref.String())
+	l := logf.FromContext(ctx).WithValues("metadata-path", metadataPath, "image", ref.String())
 	l.Info("beginning chalk extraction")
 
 	layers, err := img.Layers()
@@ -52,7 +52,7 @@ func ExtractChalkFromImage(ctx context.Context, ref name.Reference, img v1.Image
 	}
 
 	if !mediaType.IsLayer() {
-		l.Info("last layer media type is not a layer, skipping chalk extraction", "mediaType", mediaType)
+		l.Info("last layer media type is not a layer, skipping chalk extraction", "media-type", mediaType)
 		return nil
 	}
 	l = l.WithValues("mediaType", mediaType)

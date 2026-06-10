@@ -33,7 +33,7 @@ func DownloadBuildContext(ctx context.Context, ref name.Reference, img v1.Image,
 
 	var merr *multierror.Error
 	for i, tarLayer := range layers {
-		tarL := l.WithValues("layerIndex", i)
+		tarL := l.WithValues("layer-index", i)
 		tarRC, err := tarLayer.Uncompressed()
 		if err != nil {
 			tarL.Error(err, "unable to retrieve are from layer")
