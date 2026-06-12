@@ -68,6 +68,7 @@ func main() {
 
 	// ingest params
 	ingestHost := os.Getenv("OCULAR_PARAM_INGEST_HOST")
+	ingestToken := os.Getenv("CHALKULAR_INGEST_TOKEN")
 	l = l.WithValues(
 		"workspace-id", workspaceID, "args", os.Args, "ingest-host", ingestHost,
 		"s3-prefix", prefix, "s3-region", region, "s3-bucket", bucketName,
@@ -137,7 +138,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if ingestToken := os.Getenv("CHALKULAR_INGEST_TOKEN"); ingestToken != "" {
+	if ingestToken != "" && ingestHost != "" {
 		err = triggerIngest(ctx, ingestHost, workspaceID, ingestToken, ocularResults)
 		if err != nil {
 			l.Error(err, "unable to complete ingest upload")
@@ -184,6 +185,7 @@ func scannerNameFromFile(file string) string {
 }
 
 func triggerIngest(ctx context.Context, host, workspace, token string, results []ingest.OcularResult) error {
+	l := logf.FromContext(ctx, "results", len(results))
 	client := &http.Client{
 		Timeout: time.Minute * 5,
 	}
@@ -201,7 +203,6 @@ func triggerIngest(ctx context.Context, host, workspace, token string, results [
 		b.Write(resultPayload)
 		b.WriteByte('\n')
 	}
-
 	if err := merr.ErrorOrNil(); err != nil {
 		return fmt.Errorf("failed to marshal results: %w", err)
 	}
@@ -217,6 +218,7 @@ func triggerIngest(ctx context.Context, host, workspace, token string, results [
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Workspace", workspace)
 
+	l.Info("triggering ingest for results")
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to perform request: %s", err)
@@ -226,6 +228,7 @@ func triggerIngest(ctx context.Context, host, workspace, token string, results [
 		return fmt.Errorf("non-200 response returned from server: %d", resp.StatusCode)
 	}
 
+	l.Info("successfully triggered result ingest", "status-code", resp.StatusCode)
 	return nil
 }
 

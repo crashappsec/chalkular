@@ -33,4 +33,7 @@ spec:
     - name: METADATA_ID
       default: ""
       description: "The metadata ID of the resource scanned"
+    - name: INGEST_HOST
+      default: ""
+      description: "The host for the ingest, if empty upload is skipped"
   volumes: []
