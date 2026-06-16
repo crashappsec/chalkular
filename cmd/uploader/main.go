@@ -61,7 +61,7 @@ func main() {
 
 	// metadata/identifier params
 	pipelineName := os.Getenv("OCULAR_PIPELINE_NAME")
-	scanType := os.Getenv("OCULAR_PROFILE_NAME")
+	scanTarget := os.Getenv("OCULAR_PROFILE_NAME")
 	workspaceID := os.Getenv("OCULAR_PARAM_WORKSPACE_ID")
 	metadataID := os.Getenv("OCULAR_PARAM_METADATA_ID")
 	actionID := os.Getenv("OCULAR_PARAM_ACTION_ID")
@@ -126,8 +126,8 @@ func main() {
 			PipelineID:  pipelineName,
 			WorkspaceID: workspaceID,
 			ActionID:    actionID,
-			ScanType:    scanType,
-			ScanTarget:  scannerName,
+			ScanType:    scannerName,
+			ScanTarget:  scanTarget,
 			S3URI:       fmt.Sprintf("s3://%s/%s", bucketName, key),
 		})
 
