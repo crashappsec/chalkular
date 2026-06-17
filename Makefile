@@ -407,12 +407,12 @@ export CHALKULAR_HELM_VERSION
 helm-build: kubebuilder helmpatch-plugin yq clean-helm ## Generate a helm-chart using kubebuilder
 	@mkdir -p $(HELM_CHART_DIR)
 	@EXTERNAL_PLUGINS_PATH="$(LOCALBIN)" "$(KUBEBUILDER)" edit --plugins=helm.kubebuilder.io/v2-alpha,$(HELMPATCH_NAME)/$(HELMPATCH_VERSION) --output-dir=$(HELM_OUTPUT_DIR)
-	@"$(YQ)" -ie '.manager.image = {"repository": strenv(CHALKULAR_CONTROLLER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' $(HELM_CHART_DIR)/values.yaml
+	@"$(YQ)" -ie '.manager.image = {"repository": strenv(CHALKULAR_CONTROLLER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": "v{{ .Chart.AppVersion }}"}' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '.intake = {"http": {"enable": false, "port": 7070, "secure": true}, "sqs": {"enable": false, "queueURL": "", "parser": "s3-event"}, "maxPipelinesPerPolicy": 10, "rejectReportPipelineThreshold": 100}' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '(.intake | key) head_comment="Configure intake methods for chalk reports"' $(HELM_CHART_DIR)/values.yaml
-	@"$(YQ)" -ie '.downloader.image =  {"repository": strenv(CHALKULAR_DOWNLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' $(HELM_CHART_DIR)/values.yaml
+	@"$(YQ)" -ie '.downloader.image =  {"repository": strenv(CHALKULAR_DOWNLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": "v{{ .Chart.AppVersion }}"}' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '(.downloader | key) head_comment="Configure downloader image"' $(HELM_CHART_DIR)/values.yaml
-	@"$(YQ)" -ie '.uploader.image =  {"repository": strenv(CHALKULAR_UPLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(CHALKULAR_VERSION)}' $(HELM_CHART_DIR)/values.yaml
+	@"$(YQ)" -ie '.uploader.image =  {"repository": strenv(CHALKULAR_UPLOADER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": "v{{ .Chart.AppVersion }}"}' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '(.uploader | key) head_comment="Configure uploader image"' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '.appVersion = (strenv(CHALKULAR_VERSION) | sub("^v", ""))' $(HELM_CHART_DIR)/Chart.yaml
 	@"$(YQ)" -ie '.manager.serviceaccount =  {"annoations": {}, "labels": {}}' $(HELM_CHART_DIR)/values.yaml
