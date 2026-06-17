@@ -5,13 +5,6 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
   - chalk.ocular.crashoverride.run
   resources:
   - chalkreportpolicies
@@ -37,6 +30,13 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - ocular.crashoverride.run
   resources:

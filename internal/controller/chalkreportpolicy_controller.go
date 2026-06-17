@@ -46,7 +46,7 @@ func (r *ChalkReportPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=profiles,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=downloaders;clusterdownloaders,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 const policyCacheFinalizer = "chalk.ocular.crashoverride.run/cel-cache"
 
