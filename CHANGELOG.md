@@ -1,5 +1,19 @@
 # Chalkular Release Notes
 <!-- https://keepachangelog.com -->
+# [v0.0.5](https://github.com/crashappsec/chalkular/releases/tag/v0.0.5) - **June 17th, 2026**
+
+### Added
+
+- Downloader now supports build context images
+  - Triggered if the OCI image contains artifact type of `application/vnd.crashoverride.chalk.build-context.v1`
+  - Writes build context to target directory
+
+- Uploader supports ocular ingestion
+  - Triggered if the ingestion host (parameter `INGEST_HOST`) and ingestion token (from secret) are specified
+
+### Fixed
+
+- Increase unit test coverage
 
 # [v0.0.4](https://github.com/crashappsec/chalkular/releases/tag/v0.0.4) - **May 27th, 2026**
 
