@@ -22,7 +22,7 @@ import (
 
 var reportslog = logf.Log.WithName("reports-http")
 
-func scheduleReport(scheduler *reports.SchedulerClient) gin.HandlerFunc {
+func scheduleReport(scheduler reports.SchedulerClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var reports []chalk.Report
 		if err := c.BindJSON(&reports); err != nil {
@@ -31,9 +31,7 @@ func scheduleReport(scheduler *reports.SchedulerClient) gin.HandlerFunc {
 		}
 
 		reportslog.Info("received report upload", "count", len(reports))
-		for _, report := range reports {
-			_ = scheduler.NewReport(c, report)
-		}
+		_ = scheduler.Enqueue(c, reports)
 		c.JSON(http.StatusOK, v1beta1.APIResponse[struct{}]{
 			Code:    http.StatusOK,
 			Message: fmt.Sprintf("processed %d reports", len(reports)),

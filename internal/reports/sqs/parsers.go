@@ -6,14 +6,12 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-package parsers
+package sqs
 
 import (
 	"context"
-	"fmt"
-	"os"
-
 	"encoding/json"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -24,12 +22,24 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func S3EventReportParser(cfg aws.Config) ChalkReportParser {
-	s3client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-		if os.Getenv("AWS_S3_USE_PATH_STYLE") != "" {
-			o.UsePathStyle = true
-		}
-	})
+type ChalkReportParser = func(context.Context, sqstypes.Message) ([]chalk.Report, error)
+
+func RawReportParser(ctx context.Context, msg sqstypes.Message) ([]chalk.Report, error) {
+	l := logf.FromContext(ctx)
+	l.Info("parsing report from message body")
+
+	report := make(chalk.Report)
+	err := json.Unmarshal([]byte(*msg.Body), &report)
+	return []chalk.Report{report}, err
+}
+
+var _ ChalkReportParser = RawReportParser
+
+type S3ClientAPI interface {
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+}
+
+func S3EventReportParser(s3client S3ClientAPI) ChalkReportParser {
 	return func(ctx context.Context, msg sqstypes.Message) ([]chalk.Report, error) {
 		l := logf.FromContext(ctx)
 		l.Info("parsing S3 notification from message body")

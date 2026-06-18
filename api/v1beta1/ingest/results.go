@@ -6,13 +6,14 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-package parsers
+package ingest
 
-import (
-	"context"
-
-	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
-	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
-)
-
-type ChalkReportParser = func(context.Context, sqstypes.Message) ([]chalk.Report, error)
+type OcularResult struct {
+	PipelineID  string `json:"pipeline_id"`
+	MetadataID  string `json:"metadata_id"`
+	WorkspaceID string `json:"workspace_id"`
+	ActionID    string `json:"action_id"`
+	ScanType    string `json:"scan_type"`
+	ScanTarget  string `json:"scan_target"`
+	S3URI       string `json:"s3_uri"`
+}

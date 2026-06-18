@@ -12,9 +12,6 @@ spec:
   metadataFiles:
     - chalk.json
   parameters:
-    - name: PLATFORM
-      default: ""
-      description: "Which platform to download for the image"
     - name: INSECURE_REGISTRY
       default: ""
       description: "If set to a non-empty value, registry connection uses http"

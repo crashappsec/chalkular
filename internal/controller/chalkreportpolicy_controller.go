@@ -10,13 +10,10 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	chalkularv1beta1 "github.com/crashappsec/chalkular/api/v1beta1"
 	"github.com/crashappsec/chalkular/internal/policy"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
-	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,6 +46,7 @@ func (r *ChalkReportPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=profiles,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=downloaders;clusterdownloaders,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 const policyCacheFinalizer = "chalk.ocular.crashoverride.run/cel-cache"
 
@@ -59,7 +57,6 @@ func (r *ChalkReportPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	l.Info("reconciling chalk report policy")
 
-	// Fetch the Pipeline instance to be reconciled
 	reportPolicy := &chalkularv1beta1.ChalkReportPolicy{}
 	err := r.Get(ctx, req.NamespacedName, reportPolicy)
 	if err != nil {
@@ -75,39 +72,11 @@ func (r *ChalkReportPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, r.Update(ctx, reportPolicy)
 	}
 
-	// Ensure our finalizer is present.
 	if !controllerutil.ContainsFinalizer(reportPolicy, policyCacheFinalizer) {
 		controllerutil.AddFinalizer(reportPolicy, policyCacheFinalizer)
 		return ctrl.Result{}, r.Update(ctx, reportPolicy)
 	}
 
-	var downloaderAvailable, profileAvailable bool
-	_, err = r.reconcileChildProfile(ctx, reportPolicy)
-	if err != nil && apierrors.IsNotFound(err) {
-		profileAvailable = false
-	} else if err != nil {
-		l.Error(err, "failed to reconcile child profile for chalk report reportPolicy", "name", reportPolicy.Name)
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	} else {
-		profileAvailable = true
-	}
-
-	_, err = r.reconcileChildDownloader(ctx, reportPolicy)
-	if err != nil && apierrors.IsNotFound(err) {
-		downloaderAvailable = false
-	} else if err != nil {
-		l.Error(err, "failed to reconcile child downloader for chalk report reportPolicy", "name", reportPolicy.Name)
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	} else {
-		downloaderAvailable = true
-	}
-
-	if reportPolicy.Status.DownloaderValid != downloaderAvailable || reportPolicy.Status.ProfileValid != profileAvailable {
-		reportPolicy.Status.DownloaderValid = downloaderAvailable
-		reportPolicy.Status.ProfileValid = profileAvailable
-		return ctrl.Result{}, r.Status().Update(ctx, reportPolicy)
-	}
-	// compile reportPolicy
 	var metaChanged bool
 	_, err = r.PolicyCompiler.Get(reportPolicy)
 	if err != nil {
@@ -134,35 +103,4 @@ func (r *ChalkReportPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *ChalkReportPolicyReconciler) reconcileChildProfile(ctx context.Context, mapping *chalkularv1beta1.ChalkReportPolicy) (*v1.ObjectReference, error) {
-	found := &ocularv1beta1.Profile{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: mapping.Namespace,
-			Name:      mapping.Spec.PipelineTemplate.Spec.ProfileRef.Name,
-		},
-	}
-	err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: mapping.Spec.PipelineTemplate.Spec.ProfileRef.Name}, found)
-	return &v1.ObjectReference{Name: found.Name, Namespace: found.Namespace}, err
-}
-
-func (r *ChalkReportPolicyReconciler) reconcileChildDownloader(ctx context.Context, mapping *chalkularv1beta1.ChalkReportPolicy) (*ocularv1beta1.ParameterizedLocalObjectReference, error) {
-	downloaderRef := mapping.Spec.PipelineTemplate.Spec.DownloaderRef
-	switch downloaderRef.Kind {
-	case "", "Downloader":
-		found := &ocularv1beta1.Downloader{}
-		err := r.Get(ctx, client.ObjectKey{Namespace: mapping.Namespace, Name: mapping.Spec.PipelineTemplate.Spec.DownloaderRef.Name}, found)
-		return &ocularv1beta1.ParameterizedLocalObjectReference{
-			Name: found.Name, Kind: "Downloader",
-			Parameters: downloaderRef.Parameters}, err
-	case "ClusterDownloader":
-		found := &ocularv1beta1.ClusterDownloader{}
-		err := r.Get(ctx, client.ObjectKey{Name: downloaderRef.Name}, found)
-		return &ocularv1beta1.ParameterizedLocalObjectReference{
-			Name: found.Name, Kind: "ClusterDownloader",
-			Parameters: downloaderRef.Parameters}, err
-	default:
-		return nil, fmt.Errorf("unknown downloader kind: %s", downloaderRef.Kind)
-	}
 }

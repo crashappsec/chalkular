@@ -12,6 +12,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"text/template"
@@ -20,7 +21,7 @@ import (
 )
 
 const (
-	chartDir     = "dist/chart/"
+	chartDir     = "chart/"
 	templatesDir = chartDir + "templates/"
 
 	chartPath       = chartDir + "Chart.yaml"
@@ -116,6 +117,10 @@ var replacements = map[string][]replacement{
 			Pattern:     regexp.MustCompile(`(?m)^([ ]+)imagePullPolicy:.*$`),
 			Replacement: "${1}imagePullPolicy: {{ .Values.downloader.image.pullPolicy }}",
 		},
+		{
+			Pattern:     regexp.MustCompile(`\.Values`),
+			Replacement: "$$values",
+		},
 	},
 	uploaderPath: {
 		{
@@ -125,6 +130,10 @@ var replacements = map[string][]replacement{
 		{
 			Pattern:     regexp.MustCompile(`(?m)^([ ]+)imagePullPolicy:.*$`),
 			Replacement: "${1}imagePullPolicy: {{ .Values.uploader.image.pullPolicy }}",
+		},
+		{
+			Pattern:     regexp.MustCompile(`\.Values`),
+			Replacement: "$$values",
 		},
 	},
 	reportServicePath: {
@@ -144,6 +153,10 @@ var replacements = map[string][]replacement{
 			Pattern:     regexp.MustCompile(`(?m)^([ ]+)targetPort:.*$`),
 			Replacement: "${1}targetPort: {{ .Values.intake.http.port }}",
 		},
+		{
+			Pattern:     regexp.MustCompile(`\.Values`),
+			Replacement: "$$values",
+		},
 	},
 	controllerServiceAccountPath: {
 		{
@@ -160,6 +173,10 @@ var replacements = map[string][]replacement{
 				"${1}  {{ $$key }}: {{ $$val | quote }}\n" +
 				"${1}  {{- end}}",
 		},
+		{
+			Pattern:     regexp.MustCompile(`\.Values`),
+			Replacement: "$$values",
+		},
 	},
 }
 
@@ -173,23 +190,51 @@ var paddings = map[string]textPadding{
 ---
 `,
 	},
+	uploaderPath: {
+		Prefix: `
+{{- $values := (tpl (.Values | toYaml) $) | fromYaml }}
+{{- $values := (tpl ($values | toYaml) $) | fromYaml }}
+---
+`,
+	},
+	downloaderPath: {
+		Prefix: `
+{{- $values := (tpl (.Values | toYaml) $) | fromYaml }}
+{{- $values := (tpl ($values | toYaml) $) | fromYaml }}
+---
+`,
+	},
+	controllerServiceAccountPath: {
+		Prefix: `
+{{- $values := (tpl (.Values | toYaml) $) | fromYaml }}
+{{- $values := (tpl ($values | toYaml) $) | fromYaml }}
+---
+`,
+	},
+	reportServicePath: {
+		Prefix: `
+{{- $values := (tpl (.Values | toYaml) $) | fromYaml }}
+{{- $values := (tpl ($values | toYaml) $) | fromYaml }}
+---
+`,
+	},
 }
 
 //go:embed Chart.yaml.template
 var chartTmpl string
 
-func patchHelmChart(req *external.PluginRequest) (*external.PluginResponse, error) {
+func patchHelmChart(outputDir string, req *external.PluginRequest) (*external.PluginResponse, error) {
 	resp := &external.PluginResponse{
 		APIVersion: req.APIVersion,
 		Command:    req.Command,
 		Universe:   make(map[string]string),
 	}
 
-	if err := applyReplacements(req, resp); err != nil {
+	if err := applyReplacements(outputDir, req, resp); err != nil {
 		return resp, err
 	}
 
-	if err := applyPaddings(req, resp); err != nil {
+	if err := applyPaddings(outputDir, req, resp); err != nil {
 		return resp, err
 	}
 
@@ -210,7 +255,7 @@ func patchHelmChart(req *external.PluginRequest) (*external.PluginResponse, erro
 		return resp, err
 	}
 
-	resp.Universe[chartPath] = chart
+	resp.Universe[filepath.Join(outputDir, chartPath)] = chart
 	return resp, nil
 }
 
@@ -240,9 +285,10 @@ func (r replacement) apply(content string) (string, error) {
 	return r.Pattern.ReplaceAllString(content, r.Replacement), nil
 }
 
-func applyReplacements(req *external.PluginRequest, resp *external.PluginResponse) error {
+func applyReplacements(outputDir string, req *external.PluginRequest, resp *external.PluginResponse) error {
 	for path, rs := range replacements {
-		content, err := getFileContents(path, req, resp)
+		fPath := filepath.Join(outputDir, path)
+		content, err := getFileContents(fPath, req, resp)
 		if err != nil {
 			return err
 		}
@@ -253,7 +299,7 @@ func applyReplacements(req *external.PluginRequest, resp *external.PluginRespons
 				return err
 			}
 		}
-		resp.Universe[path] = content
+		resp.Universe[fPath] = content
 	}
 	return nil
 }
@@ -269,15 +315,16 @@ func (t textPadding) apply(content string) string {
 	return t.Prefix + content + t.Suffix
 }
 
-func applyPaddings(req *external.PluginRequest, resp *external.PluginResponse) error {
+func applyPaddings(outputDir string, req *external.PluginRequest, resp *external.PluginResponse) error {
 	for path, padding := range paddings {
-		content, err := getFileContents(path, req, resp)
+		fPath := filepath.Join(outputDir, path)
+		content, err := getFileContents(fPath, req, resp)
 		if err != nil {
 			return err
 		}
 
 		padded := padding.apply(content)
-		resp.Universe[path] = padded
+		resp.Universe[fPath] = padded
 	}
 	return nil
 }

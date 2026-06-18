@@ -377,16 +377,6 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              downloaderValid:
-                description: |-
-                  DownloaderValid will be true if the referenced downloader in the pipeline
-                  template is valid, and false otherwise
-                type: boolean
-              profileValid:
-                description: |-
-                  ProfileValid will be true if the referenced profile in the pipeline
-                  template is valid, and false otherwise
-                type: boolean
             type: object
         required:
         - spec
