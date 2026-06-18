@@ -45,7 +45,7 @@ jobs:
           kind load docker-image $CHALKULAR_CONTROLLER_IMG
           kind load docker-image $CHALKULAR_DOWNLOADER_IMG
           kind load docker-image $CHALKULAR_UPLOADER_IMG
-          make clean-helm build-helm
+          make clean-helm helm-build
 
       - name: Install Helm
         run: |
