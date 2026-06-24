@@ -72,6 +72,7 @@ func main() {
 	l = l.WithValues(
 		"workspace-id", workspaceID, "args", os.Args, "ingest-host", ingestHost,
 		"s3-prefix", prefix, "s3-region", region, "s3-bucket", bucketName,
+		"metadata-id", metadataID, "action-id", actionID,
 	)
 
 	var files []string

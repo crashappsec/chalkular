@@ -18,6 +18,7 @@ import (
 	"github.com/crashappsec/chalkular/internal/reports"
 	"github.com/prometheus/client_golang/prometheus"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 var (
@@ -53,6 +54,17 @@ var (
 		},
 	)
 )
+
+func init() {
+	// Register custom metrics with the global prometheus registry
+	metrics.Registry.MustRegister(
+		sqsMessageProcessingDurationSeconds,
+		sqsMessagesDeletedTotal,
+		sqsMessagesProcessedTotal,
+		sqsMessagesReceivedTotal,
+		sqsReceiveErrorsTotal,
+	)
+}
 
 type SQSClientAPI interface {
 	ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
