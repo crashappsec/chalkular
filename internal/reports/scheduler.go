@@ -18,17 +18,64 @@ import (
 	"github.com/crashappsec/chalkular/api/v1beta1/chalk"
 	"github.com/crashappsec/chalkular/internal/policy"
 	ocularv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 const (
 	schedulerLabel = "chalk.ocular.crashoverride.run/scheduled-by"
 	schedulerValue = "chalkular-controller"
 )
+
+var (
+	schedulerPipelinesCreated = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "scheduler_pipelines_created",
+			Help: "Total number of pipelines created",
+		},
+		[]string{"profile", "policy", "namespace"},
+	)
+	schedulerReportErrors = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "scheduler_reports_errors",
+			Help: "Total number of pipelines created",
+		},
+	)
+	schedulerReportsRecieved = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "scheduler_reports_received",
+			Help: "Total number of pipelines created",
+		},
+	)
+	schedulerEventsRecieved = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "scheduler_events_received",
+			Help: "Total number of pipelines created",
+		},
+	)
+	schedulerEventProcessingDurationSeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name: "scheduler_event_processing_duration_seconds",
+			Help: "Duration in seconds of processing per event",
+		},
+	)
+)
+
+func init() {
+	// Register custom metrics with the global prometheus registry
+	metrics.Registry.MustRegister(
+		schedulerEventProcessingDurationSeconds,
+		schedulerEventsRecieved,
+		schedulerPipelinesCreated,
+		schedulerReportErrors,
+		schedulerReportsRecieved,
+	)
+}
 
 type Scheduler struct {
 	eventBus                eventBus
@@ -83,92 +130,98 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case event := <-s.eventBus:
+		case e := <-s.eventBus:
 			l.Info("chalk reports received, scheduling")
-			reports := event.Reports
-
-			if s.rejectPipelineThreshold > 0 {
-				active, err := s.countActivePipelines(ctx)
-				if err != nil {
-					event.Result <- fmt.Errorf("unable to list active pipelines: %w", err)
-					close(event.Result)
-					continue
-				}
-				if active >= s.rejectPipelineThreshold {
-					l.Info("rejecting reports, pipeline threshold hit")
-					event.Result <- fmt.Errorf("%w: currently %d active which exceeds threshold of %d, rejecting event",
-						ErrPipelineThreshold, active, s.rejectPipelineThreshold)
-					close(event.Result)
-					continue
-				}
+			schedulerEventsRecieved.Inc()
+			schedulerReportsRecieved.Add(float64(len(e.Reports)))
+			start := time.Now()
+			err := s.processReports(ctx, e.Reports)
+			e.Result <- err
+			close(e.Result)
+			duration := time.Since(start)
+			schedulerEventProcessingDurationSeconds.Observe(duration.Seconds())
+			if err != nil {
+				schedulerReportErrors.Add(1)
 			}
-
-			policies := &chalkularv1beta1.ChalkReportPolicyList{}
-			if err := s.mgrClient.List(ctx, policies); err != nil {
-				event.Result <- fmt.Errorf("unable to list chalk report policies: %w", err)
-				close(event.Result)
-			}
-
-			// group generated pipelines by report + policy
-			// so that we can write events to policies if templated pipeline
-			// fails to be created
-			var generatedPipelines []policyGeneratedPipelines
-			for _, report := range reports {
-				actionID, exist := report[chalk.KeyActionID]
-				actionIDStr, valid := actionID.(string)
-				if !exist || !valid {
-					l.Error(fmt.Errorf("missing or invalid key \"%s\" found in report", chalk.KeyActionID), "action ID string was not found for report")
-					event.Result <- fmt.Errorf("invalid chalk report, missing or invalid key %s found", chalk.KeyActionID)
-					close(event.Result)
-					continue
-				}
-				reportL := l.WithValues("action-id", actionID)
-				reportCtx := logf.IntoContext(ctx, reportL)
-
-				generated := s.createPipelinesForReport(reportCtx, policies.Items, actionIDStr, report)
-				generatedPipelines = append(generatedPipelines, generated...)
-			}
-
-			// this is separate incase we fail to process one report,
-			// we reject before pipelines are created in order to allow
-			// the message to be requeued. If pipelines fail to be created
-			// the errors will be logged to the poilicies
-			// events and is considered an error with the policy,
-			// not the report.
-			var createdPipelines []*ocularv1beta1.Pipeline
-			for _, g := range generatedPipelines {
-				var policyPipelines []*ocularv1beta1.Pipeline
-				for i, pipeline := range g.pipelines {
-					err := s.mgrClient.Create(ctx, pipeline)
-					if err != nil {
-						l.Error(err, "unable to create pipeline for policy",
-							"pipeline", pipeline.Name, "namespace", g.policy.Namespace, "policy", g.policy.Name)
-						s.recorder.Eventf(&g.policy, nil,
-							corev1.EventTypeWarning,
-							"FailedToCreatePipeline",
-							"CreatePipelineFromReport",
-							"failed to generate pipeline (%d/%d) for report '%s': %s", i, len(g.pipelines), g.actionID, err)
-					} else {
-						policyPipelines = append(policyPipelines, pipeline)
-					}
-				}
-				if len(policyPipelines) > 0 {
-					s.recorder.Eventf(&g.policy, nil,
-						corev1.EventTypeNormal,
-						"PipelinesCreated",
-						"CreatePipelineFromReport",
-						"report '%s' created %d pipeline", g.actionID, len(createdPipelines))
-					createdPipelines = append(createdPipelines, policyPipelines...)
-				}
-
-			}
-
-			l.Info(fmt.Sprintf("created %d pipelines", len(createdPipelines)), "pipelines", len(createdPipelines))
-			event.Result <- nil
-			close(event.Result)
-			// if we get here lets rest a second to not
-			// overwhelm the api server
 			time.Sleep(time.Second)
 		}
 	}
+}
+
+func (s *Scheduler) processReports(ctx context.Context, reports []chalk.Report) error {
+	l := logf.FromContext(ctx)
+	l.Info("chalk reports received, scheduling")
+
+	if s.rejectPipelineThreshold > 0 {
+		active, err := s.countActivePipelines(ctx)
+		if err != nil {
+			return fmt.Errorf("unable to list active pipelines: %w", err)
+		}
+		if active >= s.rejectPipelineThreshold {
+			l.Info("rejecting reports, pipeline threshold hit")
+			return fmt.Errorf("%w: currently %d active which exceeds threshold of %d, rejecting event",
+				ErrPipelineThreshold, active, s.rejectPipelineThreshold)
+		}
+	}
+
+	policies := &chalkularv1beta1.ChalkReportPolicyList{}
+	if err := s.mgrClient.List(ctx, policies); err != nil {
+		return fmt.Errorf("unable to list chalk report policies: %w", err)
+	}
+
+	// group generated pipelines by report + policy
+	// so that we can write events to policies if templated pipeline
+	// fails to be created
+	var generatedPipelines []policyGeneratedPipelines
+	for _, report := range reports {
+		actionID, exist := report[chalk.KeyActionID]
+		actionIDStr, valid := actionID.(string)
+		if !exist || !valid {
+			l.Error(fmt.Errorf("missing or invalid key \"%s\" found in report", chalk.KeyActionID), "action ID string was not found for report")
+			return fmt.Errorf("invalid chalk report, missing or invalid key %s found", chalk.KeyActionID)
+		}
+		reportL := l.WithValues("action-id", actionID)
+		reportCtx := logf.IntoContext(ctx, reportL)
+
+		generated := s.createPipelinesForReport(reportCtx, policies.Items, actionIDStr, report)
+		generatedPipelines = append(generatedPipelines, generated...)
+	}
+
+	// this is separate incase we fail to process one report,
+	// we reject before pipelines are created in order to allow
+	// the message to be requeued. If pipelines fail to be created
+	// the errors will be logged to the poilicies
+	// events and is considered an error with the policy,
+	// not the report.
+	var createdPipelines []*ocularv1beta1.Pipeline
+	for _, g := range generatedPipelines {
+		var policyPipelines []*ocularv1beta1.Pipeline
+		for i, pipeline := range g.pipelines {
+			err := s.mgrClient.Create(ctx, pipeline)
+			if err != nil {
+				l.Error(err, "unable to create pipeline for policy",
+					"pipeline", pipeline.Name, "namespace", g.policy.Namespace, "policy", g.policy.Name)
+				s.recorder.Eventf(&g.policy, nil,
+					corev1.EventTypeWarning,
+					"FailedToCreatePipeline",
+					"CreatePipelineFromReport",
+					"failed to generate pipeline (%d/%d) for report '%s': %s", i, len(g.pipelines), g.actionID, err)
+			} else {
+				schedulerPipelinesCreated.With(prometheus.Labels{"profile": pipeline.Spec.ProfileRef.Name, "policy": g.policy.Name, "namespace": pipeline.Namespace})
+				policyPipelines = append(policyPipelines, pipeline)
+			}
+		}
+		if len(policyPipelines) > 0 {
+			s.recorder.Eventf(&g.policy, nil,
+				corev1.EventTypeNormal,
+				"PipelinesCreated",
+				"CreatePipelineFromReport",
+				"report '%s' created %d pipeline", g.actionID, len(createdPipelines))
+			createdPipelines = append(createdPipelines, policyPipelines...)
+		}
+
+	}
+
+	l.Info(fmt.Sprintf("created %d pipelines", len(createdPipelines)), "pipelines", len(createdPipelines))
+	return nil
 }
