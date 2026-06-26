@@ -1,5 +1,17 @@
 # Chalkular Release Notes
 <!-- https://keepachangelog.com -->
+# [v0.0.6](https://github.com/crashappsec/chalkular/releases/tag/v0.0.6) - **June 26th, 2026**
+
+### Added
+
+- OpenMetrics for SQS and Scheduler
+  - SQS stats for messages read, errors and latency
+  - Scheduler stats for pipelines created and errors
+
+### Changed
+
+- upgrade ocular to v0.3.3
+
 # [v0.0.5](https://github.com/crashappsec/chalkular/releases/tag/v0.0.5) - **June 17th, 2026**
 
 ### Added
