@@ -154,7 +154,7 @@ func (s *Scheduler) isDownloaderValid(ctx context.Context, reportPolicy *chalkul
 
 func isPipelineActiveIndexer(o client.Object) []string {
 	p := o.(*ocularv1beta1.Pipeline)
-	if p.Status.StartTime != nil && p.Status.CompletionTime == nil {
+	if p.Status.CompletionTime == nil {
 		return []string{"true"}
 	}
 	return []string{"false"}
