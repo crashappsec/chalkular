@@ -33,6 +33,13 @@ const (
 )
 
 var (
+	schedulerPipelinesGenerated = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "scheduler_pipelines_genereated",
+			Help: "Total number of pipelines generated from all reports in event",
+		},
+		[]string{"profile", "policy", "namespace"},
+	)
 	schedulerPipelinesCreated = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "scheduler_pipelines_created",
@@ -40,22 +47,29 @@ var (
 		},
 		[]string{"profile", "policy", "namespace"},
 	)
-	schedulerReportErrors = prometheus.NewCounter(
+	schedulerPipelineErrors = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "scheduler_reports_errors",
-			Help: "Total number of pipelines created",
+			Name: "scheduler_pipeline_errors",
+			Help: "Total number of errors when creating pipelines",
 		},
+		[]string{"profile", "policy", "namespace"},
 	)
 	schedulerReportsRecieved = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "scheduler_reports_received",
-			Help: "Total number of pipelines created",
+			Help: "Total number of reports receieved. (one event can contain multiple reports)",
 		},
 	)
 	schedulerEventsRecieved = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "scheduler_events_received",
-			Help: "Total number of pipelines created",
+			Help: "Total number of events received (i.e. SQS message, HTTP request, etc.)",
+		},
+	)
+	schedulerEventErrors = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "scheduler_event_errors",
+			Help: "Total number of errors reported for event",
 		},
 	)
 	schedulerEventProcessingDurationSeconds = prometheus.NewHistogram(
@@ -71,9 +85,11 @@ func init() {
 	metrics.Registry.MustRegister(
 		schedulerEventProcessingDurationSeconds,
 		schedulerEventsRecieved,
-		schedulerPipelinesCreated,
-		schedulerReportErrors,
+		schedulerEventErrors,
 		schedulerReportsRecieved,
+		schedulerPipelinesGenerated,
+		schedulerPipelinesCreated,
+		schedulerPipelineErrors,
 	)
 }
 
@@ -141,7 +157,8 @@ func (s *Scheduler) Start(ctx context.Context) error {
 			duration := time.Since(start)
 			schedulerEventProcessingDurationSeconds.Observe(duration.Seconds())
 			if err != nil {
-				schedulerReportErrors.Add(1)
+				l.Error(err, "error when processing reports")
+				schedulerEventErrors.Inc()
 			}
 			time.Sleep(time.Second)
 		}
@@ -197,6 +214,12 @@ func (s *Scheduler) processReports(ctx context.Context, reports []chalk.Report) 
 	for _, g := range generatedPipelines {
 		var policyPipelines []*ocularv1beta1.Pipeline
 		for i, pipeline := range g.pipelines {
+			metricLabels := prometheus.Labels{
+				"profile":   pipeline.Spec.ProfileRef.Name,
+				"policy":    g.policy.Name,
+				"namespace": pipeline.Namespace,
+			}
+			schedulerPipelinesGenerated.With(metricLabels).Inc()
 			err := s.mgrClient.Create(ctx, pipeline)
 			if err != nil {
 				l.Error(err, "unable to create pipeline for policy",
@@ -206,8 +229,9 @@ func (s *Scheduler) processReports(ctx context.Context, reports []chalk.Report) 
 					"FailedToCreatePipeline",
 					"CreatePipelineFromReport",
 					"failed to generate pipeline (%d/%d) for report '%s': %s", i, len(g.pipelines), g.actionID, err)
+				schedulerPipelineErrors.With(metricLabels).Inc()
 			} else {
-				schedulerPipelinesCreated.With(prometheus.Labels{"profile": pipeline.Spec.ProfileRef.Name, "policy": g.policy.Name, "namespace": pipeline.Namespace})
+				schedulerPipelinesCreated.With(metricLabels).Inc()
 				policyPipelines = append(policyPipelines, pipeline)
 			}
 		}
