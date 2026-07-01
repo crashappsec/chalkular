@@ -15,6 +15,13 @@ spec:
             name: chalkular-secrets
             optional: true
     volumeMounts: []
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
   parameters:
     - name: S3_BUCKET
       description: "The S3 bucket to upload to"

@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.0
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.21
 	github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.12.0
-	github.com/crashappsec/ocular v0.3.3
+	github.com/crashappsec/ocular v0.3.4-beta.1
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/cel-go v0.28.1
 	github.com/google/go-containerregistry v0.21.5
