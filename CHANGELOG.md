@@ -1,5 +1,12 @@
 # Chalkular Release Notes
 <!-- https://keepachangelog.com -->
+# [v0.0.7](https://github.com/crashappsec/chalkular/releases/tag/v0.0.7) - **July 8th, 2026**
+
+### Changed
+- Add resource requirements to downloader and uploader
+- Upgrade to ocular v0.4.0
+- Consider pending pipelines as active for reject threshold
+
 # [v0.0.6](https://github.com/crashappsec/chalkular/releases/tag/v0.0.6) - **June 26th, 2026**
 
 ### Added
