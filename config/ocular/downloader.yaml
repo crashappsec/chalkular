@@ -7,8 +7,16 @@ spec:
     name: chalkmark-extract
     image: chalkular-downloader:latest
     imagePullPolicy: IfNotPresent
+    command: ["/entrypoint"]
     env: []
     volumeMounts: []
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
   metadataFiles:
     - chalk.json
   parameters:
