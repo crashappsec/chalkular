@@ -31,7 +31,8 @@ spec:
       description: "AWS Region to use"
     - name: S3_PREFIX
       default: ""
-      description: "a prefix to append to all objects created"
+      description: |
+        a prefix to append to all objects created (excluding content hash)
     - name: WORKSPACE_ID
       default: ""
       description: "The workspace ID that the report belongs to"
@@ -44,4 +45,18 @@ spec:
     - name: INGEST_HOST
       default: ""
       description: "The host for the ingest, if empty upload is skipped"
+    - name: ENABLE_CONTENTHASH
+      default: ""
+      description: |
+        Uses a content hash to determine when to ignore uploading duplicate data
+        for result files. If set to non-empty string the uploader will,
+        for each result file, look for a file with the same base name with
+        ".contenthash" appended in the metadata folder. If found it will use the
+        contents of that file as the hash and check if file already exists for
+        that hash in the S3 bucket and not reupload if found. The path for the
+        object will be <CONTENTHASH_PREFIX>/<HASH>/<FILE_BASE_NAME>
+    - name: CONTENTHASH_PREFIX
+      default: ""
+      description: |
+        The prefix to append to content hash files
   volumes: []

@@ -12,18 +12,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	s3service "github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/crashappsec/chalkular/api/v1beta1/ingest"
 	"github.com/crashappsec/chalkular/internal/utils"
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -58,6 +59,8 @@ func main() {
 	bucketName := os.Getenv("OCULAR_PARAM_S3_BUCKET")
 	region := os.Getenv("OCULAR_PARAM_S3_REGION")
 	prefix := strings.Trim(os.Getenv("OCULAR_PARAM_S3_PREFIX"), "/")
+	enableContentHashing := os.Getenv("OCULAR_PARAM_ENABLE_CONTENTHASH") != ""
+	contentHashPrefix := strings.Trim(os.Getenv("OCULAR_PARAM_CONTENTHASH_PREFIX"), "/")
 
 	// metadata/identifier params
 	pipelineName := os.Getenv("OCULAR_PIPELINE_NAME")
@@ -85,23 +88,37 @@ func main() {
 	}
 	l.Info("parsing files", "files", files)
 	var (
-		resultFiles  []string
+		resultFiles  []resultFile
 		resultPrefix = os.Getenv(v1beta1.EnvVarResultsDir)
 	)
 	for _, f := range files {
 		if strings.HasPrefix(f, resultPrefix) {
-			resultFiles = append(resultFiles, f)
+			r := resultFile{
+				path:        f,
+				scannerName: scannerNameFromFile(f),
+			}
+			r.objectPrefix = path.Clean(prefix)
+			r.replaceExisting = true
+			if enableContentHashing {
+				contentHashPath := path.Join(os.Getenv(v1beta1.EnvVarMetadataDir), path.Base(f)+".contenthash")
+				contentHash, err := os.ReadFile(contentHashPath)
+				trimmedHash := strings.TrimSpace(string(contentHash))
+				if err != nil {
+					if !os.IsNotExist(err) {
+						l.Error(err, "error while reading content hash file", "path", contentHashPath)
+					}
+					l.Info("no content hash found skipping", "path", contentHashPath)
+				} else if trimmedHash != "" {
+					r.objectPrefix = path.Clean(path.Join(contentHashPrefix, trimmedHash))
+					r.replaceExisting = false
+				}
+			}
+
+			resultFiles = append(resultFiles, r)
 		}
 	}
 	l = l.WithValues("result-files", resultFiles)
 	l.Info("parsed result files")
-
-	// l.Info("parsing chalk metadata")
-	// chalkmark, err := parseChalkmark(ctx, path.Join(os.Getenv(v1beta1.EnvVarMetadataDir), ChalkMetadataFile))
-	// if err != nil {
-	// l.Error(err, "failed to retrieve chalk mark")
-	// os.Exit(1)
-	// }
 
 	cfg, err := utils.BuildAWSConfig(ctx, config.WithRegion(region))
 	if err != nil {
@@ -114,22 +131,20 @@ func main() {
 		ocularResults []ingest.OcularResult
 	)
 	for _, file := range resultFiles {
-		key := fmt.Sprintf("%s/%s", filepath.Clean(prefix), path.Base(file))
-		_, err := uploadToS3(ctx, s3Client, bucketName, key, file)
+		uri, err := uploadToObjectStore(ctx, s3Client, bucketName, file)
 		if err != nil {
 			l.Error(err, "failed to upload result file to s3", "result-file", file)
 			merr = multierror.Append(merr, err)
 			continue
 		}
-		scannerName := scannerNameFromFile(file)
 		ocularResults = append(ocularResults, ingest.OcularResult{
 			MetadataID:  metadataID,
 			PipelineID:  pipelineName,
 			WorkspaceID: workspaceID,
 			ActionID:    actionID,
-			ScanType:    scannerName,
+			ScanType:    file.scannerName,
 			ScanTarget:  scanTarget,
-			S3URI:       fmt.Sprintf("s3://%s/%s", bucketName, key),
+			S3URI:       uri,
 		})
 
 	}
@@ -152,30 +167,66 @@ func main() {
 	l.Info("upload completed successfully")
 }
 
-func uploadToS3(ctx context.Context, c *s3service.Client, b, k, f string) (*s3service.PutObjectOutput, error) {
-	fileL := logf.FromContext(ctx).WithValues("result-file", f, "bucket", b, "key", k)
-	file, err := os.Open(filepath.Clean(f))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open result file '%s': %w", f, err)
+func uploadToObjectStore(ctx context.Context, c *s3service.Client, bucket string, r resultFile) (string, error) {
+	l := logf.FromContext(ctx).WithValues("bucket", bucket)
+	l.Info("uploading result file", "result-file", r)
+
+	key := path.Join(r.objectPrefix, path.Base(r.path))
+	uri := fmt.Sprintf("s3://%s/%s", bucket, key)
+
+	if !r.replaceExisting {
+		exists, err := objectExists(ctx, c, bucket, key)
+		if err != nil {
+			l.Error(err, "unable to determine if existing object for content exists, skipping check")
+		} else if exists {
+			return uri, nil
+		}
 	}
 
+	l.Info("putting new object into bucket", "bucket", bucket, "key", key)
+	file, err := os.Open(r.path)
+	if err != nil {
+		return "", fmt.Errorf("failed to open result file '%s': %w", r.path, err)
+	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			fileL.Error(err, "failed to close file")
+		err := file.Close()
+		if err != nil {
+			l.Error(err, "unable to close result file", "result-file", r)
 		}
 	}()
 
-	fileL.Info("putting new object into bucket")
-	output, err := c.PutObject(ctx, &s3service.PutObjectInput{
-		Bucket: aws.String(b),
-		Key:    aws.String(k),
+	_, err = c.PutObject(ctx, &s3service.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
 		Body:   file,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload s3 object '%s': %w", f, err)
+		return "", fmt.Errorf("failed to upload s3 object '%s': %w", key, err)
 	}
 
-	return output, nil
+	return uri, nil
+}
+
+func objectExists(ctx context.Context, client *s3service.Client, bucket, key string) (bool, error) {
+	_, err := client.HeadObject(ctx, &s3service.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err == nil {
+		return true, nil
+	}
+
+	if _, ok := errors.AsType[*s3types.NotFound](err); ok {
+		return false, nil
+	}
+	return false, fmt.Errorf("head %s/%s: %w", bucket, key, err)
+}
+
+type resultFile struct {
+	path            string
+	objectPrefix    string
+	scannerName     string
+	replaceExisting bool
 }
 
 // scannerNameFromFile will split the base file name
@@ -222,8 +273,13 @@ func triggerIngest(ctx context.Context, host, workspace, token string, results [
 	l.Info("triggering ingest for results")
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to perform request: %s", err)
+		return fmt.Errorf("failed to perform request: %w", err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			l.Error(err, "unable to close response body of ingest request")
+		}
+	}()
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
 		return fmt.Errorf("non-200 response returned from server: %d", resp.StatusCode)
@@ -232,25 +288,3 @@ func triggerIngest(ctx context.Context, host, workspace, token string, results [
 	l.Info("successfully triggered result ingest", "status-code", resp.StatusCode)
 	return nil
 }
-
-// func parseChalkmark(ctx context.Context, chalkpath string) (map[string]any, error) {
-// 	l := logf.FromContext(ctx)
-// 	chalkF, err := os.Open(chalkpath)
-// 	if err != nil {
-// 		l.Error(err, "failed to open chalk metadata file")
-// 		return nil, fmt.Errorf("failed to open chalk metadata: %w", err)
-// 	}
-// 	defer func() {
-// 		if err := chalkF.Close(); err != nil {
-// 			l.Error(err, "failed to close chalk file")
-// 		}
-// 	}()
-
-// 	chalkmark := make(map[string]any)
-// 	if err := json.NewDecoder(chalkF).Decode(&chalkmark); err != nil {
-// 		l.Error(err, "failed to decode chark mark JSON")
-// 		return nil, fmt.Errorf("unable to decode chalkmark: %w", err)
-// 	}
-// 	return chalkmark, nil
-
-// }
