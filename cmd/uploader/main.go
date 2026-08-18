@@ -132,7 +132,10 @@ func main() {
 	)
 	for _, file := range resultFiles {
 		uri, err := uploadToObjectStore(ctx, s3Client, bucketName, file)
-		if err != nil {
+		if os.IsNotExist(err) {
+			l.Error(err, "file not found for upload, skipping", "file", file)
+			continue
+		} else if err != nil {
 			l.Error(err, "failed to upload result file to s3", "result-file", file)
 			merr = multierror.Append(merr, err)
 			continue
