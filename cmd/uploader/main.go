@@ -132,7 +132,10 @@ func main() {
 	)
 	for _, file := range resultFiles {
 		uri, err := uploadToObjectStore(ctx, s3Client, bucketName, file)
-		if err != nil {
+		if os.IsNotExist(err) {
+			l.Error(err, "file not found for upload, skipping", "file", file)
+			continue
+		} else if err != nil {
 			l.Error(err, "failed to upload result file to s3", "result-file", file)
 			merr = multierror.Append(merr, err)
 			continue
@@ -186,7 +189,7 @@ func uploadToObjectStore(ctx context.Context, c *s3service.Client, bucket string
 	l.Info("putting new object into bucket", "bucket", bucket, "key", key)
 	file, err := os.Open(r.path)
 	if err != nil {
-		return "", fmt.Errorf("failed to open result file '%s': %w", r.path, err)
+		return "", err
 	}
 	defer func() {
 		err := file.Close()
