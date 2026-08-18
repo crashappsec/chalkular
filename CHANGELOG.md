@@ -1,5 +1,10 @@
 # Chalkular Release Notes
 <!-- https://keepachangelog.com -->
+# [v0.0.8](https://github.com/crashappsec/chalkular/releases/tag/v0.0.8) - **August 16th, 2026**
+
+### Added
+- Ability to use a custom content hash for interacting with S3 as object store
+
 # [v0.0.7](https://github.com/crashappsec/chalkular/releases/tag/v0.0.7) - **July 8th, 2026**
 
 ### Changed
